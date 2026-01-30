@@ -1,0 +1,14 @@
+{
+  "name": "@metric/periphery",
+  "version": "1.0.0",
+  "description": "Periphery contracts for MetricOMM (Router, Quoter)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Metric-OMM/metric-periphery.git"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "prettier-plugin-solidity": "^1.3.1"
+  }
+}
