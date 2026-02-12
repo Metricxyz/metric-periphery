@@ -40,9 +40,30 @@ contract MaliciousPoolForRouterTest {
   }
 
   function swap(address, bool, int128, uint128, bytes calldata data) external returns (int128, int128) {
-    MetricOmmSwapRouter(payable(msg.sender))
-      .metricOmmSwapCallback(TOKEN0, TOKEN1, int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
+    MetricOmmSwapRouter(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
+  }
+
+  function getImmutables()
+    external
+    view
+    returns (
+      address factory,
+      address priceProvider,
+      address token0,
+      address token1,
+      uint104 initialToken0PerDistUnitPerShareE18,
+      uint104 initialToken1PerDistUnitPerShareE18,
+      uint104 minimalMintableLiquidity,
+      uint256 maxDriftE8,
+      uint256 maxDriftDecayPerSecondE8,
+      int16 lowestBin,
+      int16 highestBin,
+      uint256 token0ScaleMultiplier,
+      uint256 token1ScaleMultiplier
+    )
+  {
+    return (address(0), address(0), TOKEN0, TOKEN1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   }
 }
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
+import {IMetricOmmPoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolImmutables.sol";
 import {IMetricOmmSwapCallback} from "./interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {MetricOmmPoolQuoter} from "./MetricOmmPoolQuoter.sol";
@@ -273,15 +274,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
 
   /// @notice Callback invoked by the pool during swap execution
   /// @inheritdoc IMetricOmmSwapCallback
-  function metricOmmSwapCallback(
-    address token0,
-    address token1,
-    int256 amount0Delta,
-    int256 amount1Delta,
-    bytes calldata
-  ) external {
+  function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata) external {
     (address payer, address pool, uint256 flags) = _loadSwapContext();
     if (msg.sender != pool) revert InvalidCallbackCaller();
+
+    (,, address token0, address token1,,,,,,,,,) = IMetricOmmPoolImmutables(pool).getImmutables();
 
     bool zeroForOne = (flags & FLAG_ZERO_FOR_ONE) != 0;
     bool payerIsNative = (flags & FLAG_PAYER_IS_NATIVE) != 0;
