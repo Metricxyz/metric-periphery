@@ -11,6 +11,7 @@ build-forge *args: install-forge
     forge build {{args}}
 
 install-forge:
+    git submodule update --init --recursive
     forge install
 
 # Formatting

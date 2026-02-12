@@ -11,15 +11,16 @@ This repository contains the periphery contracts that interact with MetricOMM co
 
 ## Dependencies
 
-This project depends on [metric-core](https://github.com/Metric-OMM/metric-core).
+This project depends on:
 
-**Temporary setup:** Copy the `metric-core` repository into `lib/metric-core/`:
+- [metric-core](https://github.com/Metric-OMM/metric-core)
+- [forge-std](https://github.com/foundry-rs/forge-std)
+- [openzeppelin-contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)
+- [sstore2](https://github.com/0xsequence/sstore2)
 
-```bash
-cp -r /path/to/metric-core lib/metric-core
-```
+All dependencies are configured as git submodules under `lib/`.
 
-> **Note:** Once metric-core is public, this will be converted to a proper git submodule.
+> **Note:** `metric-core` is private. Ensure your GitHub credentials (SSH key or token) have access.
 
 ## Setup
 
@@ -30,11 +31,17 @@ curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
 
-### Copy metric-core
+### Initialize submodules
 
 ```bash
-# Copy from your local metric-core repo
-cp -r ../metric-core lib/metric-core
+# after clone
+git submodule update --init --recursive
+```
+
+Or clone with submodules in one step:
+
+```bash
+git clone --recurse-submodules https://github.com/Metric-OMM/metric-periphery.git
 ```
 
 ## Build
