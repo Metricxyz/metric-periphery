@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.33;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
@@ -278,7 +278,7 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     (address payer, address pool, uint256 flags) = _loadSwapContext();
     if (msg.sender != pool) revert InvalidCallbackCaller();
 
-    (,, address token0, address token1,,,,,,,,,) = IMetricOmmPoolImmutables(pool).getImmutables();
+    (,, address token0, address token1,,,,,,,,,,) = IMetricOmmPoolImmutables(pool).getImmutables();
 
     bool zeroForOne = (flags & FLAG_ZERO_FOR_ONE) != 0;
     bool payerIsNative = (flags & FLAG_PAYER_IS_NATIVE) != 0;

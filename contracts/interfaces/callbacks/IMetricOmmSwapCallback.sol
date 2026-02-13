@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.33;
 
 /// @title Callback for swap operations
 /// @notice Any contract that calls IMetricOmmPool#swap must implement this interface

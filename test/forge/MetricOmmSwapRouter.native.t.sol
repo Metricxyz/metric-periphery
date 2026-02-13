@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.33;
 
 import {Test} from "forge-std/Test.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
@@ -55,6 +55,7 @@ contract MaliciousPoolForRouterTest {
       uint104 initialToken0PerDistUnitPerShareE18,
       uint104 initialToken1PerDistUnitPerShareE18,
       uint104 minimalMintableLiquidity,
+      bool reportSwapToPriceProvider,
       uint256 maxDriftE8,
       uint256 maxDriftDecayPerSecondE8,
       int16 lowestBin,
@@ -63,7 +64,7 @@ contract MaliciousPoolForRouterTest {
       uint256 token1ScaleMultiplier
     )
   {
-    return (address(0), address(0), TOKEN0, TOKEN1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    return (address(0), address(0), TOKEN0, TOKEN1, 0, 0, 0, false, 0, 0, 0, 0, 0, 0);
   }
 }
 
@@ -126,6 +127,7 @@ contract MetricOmmSwapRouterNativeTest is Test {
       INITIAL_TOKEN_0_DENSITY,
       INITIAL_TOKEN_1_DENSITY,
       MINIMAL_MINTABLE_LIQUIDITY,
+      false,
       MAX_DRIFT,
       DRIFT_DECAY_PER_SECOND,
       PROTOCOL_FEE,
@@ -170,7 +172,13 @@ contract MetricOmmSwapRouterNativeTest is Test {
 
     vm.prank(swapper);
     (uint256 amountOut, uint256 amountInUsed) = router.swapExactInputNativeForTokens{value: amountIn}(
-      address(pool), recipient, true, amountIn, 0, 0, type(uint256).max
+      address(pool),
+      recipient,
+      true,
+      amountIn,
+      0,
+      0,
+      type(uint256).max
     );
 
     assertEq(amountInUsed, amountIn, "amountInUsed");
@@ -189,7 +197,13 @@ contract MetricOmmSwapRouterNativeTest is Test {
 
     vm.prank(swapper);
     (uint256 amountOut, uint256 amountInUsed) = router.swapExactOutputNativeForTokens{value: maxAmountIn}(
-      address(pool), recipient, true, amountOutDesired, 0, maxAmountIn, type(uint256).max
+      address(pool),
+      recipient,
+      true,
+      amountOutDesired,
+      0,
+      maxAmountIn,
+      type(uint256).max
     );
 
     assertEq(amountOut, amountOutDesired, "exact output");
@@ -207,7 +221,13 @@ contract MetricOmmSwapRouterNativeTest is Test {
 
     vm.prank(swapper);
     (uint256 amountOut, uint256 amountInUsed) = router.swapExactInputTokensForNative(
-      address(pool), recipient, false, amountIn, type(uint128).max, 0, type(uint256).max
+      address(pool),
+      recipient,
+      false,
+      amountIn,
+      type(uint128).max,
+      0,
+      type(uint256).max
     );
 
     assertEq(amountInUsed, amountIn, "amountInUsed");
@@ -256,7 +276,13 @@ contract MetricOmmSwapRouterNativeTest is Test {
 
     vm.prank(swapper);
     (uint256 amountOut, uint256 amountInUsed) = router.swapExactOutputTokensForNative(
-      address(pool), recipient, false, amountOutDesired, type(uint128).max, maxAmountIn, type(uint256).max
+      address(pool),
+      recipient,
+      false,
+      amountOutDesired,
+      type(uint128).max,
+      maxAmountIn,
+      type(uint256).max
     );
 
     assertEq(amountOut, amountOutDesired, "exact output");
