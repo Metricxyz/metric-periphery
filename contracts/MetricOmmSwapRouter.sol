@@ -4,7 +4,7 @@ pragma solidity ^0.8.33;
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmPoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolImmutables.sol";
-import {IMetricOmmSwapCallback} from "./interfaces/callbacks/IMetricOmmSwapCallback.sol";
+import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {MetricOmmPoolQuoter} from "./MetricOmmPoolQuoter.sol";
 import {WrappedERC20} from "./libraries/WrappedERC20.sol";
