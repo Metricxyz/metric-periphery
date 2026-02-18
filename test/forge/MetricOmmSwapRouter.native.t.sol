@@ -40,7 +40,13 @@ contract MaliciousPoolForRouterTest {
   }
 
   function swap(address, bool, int128, uint128, bytes calldata data) external returns (int128, int128) {
-    MetricOmmSwapRouter(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
+    MetricOmmSwapRouter(payable(msg.sender)).metricOmmSwapCallback(
+      TOKEN0,
+      TOKEN1,
+      int256(AMOUNT0_DELTA),
+      int256(AMOUNT1_DELTA),
+      data
+    );
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
   }
 

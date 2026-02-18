@@ -3,7 +3,6 @@ pragma solidity ^0.8.33;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmPoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolImmutables.sol";
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {MetricOmmPoolQuoter} from "./MetricOmmPoolQuoter.sol";
@@ -81,7 +80,8 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     _startSwap(pool, msg.sender, false, false, zeroForOne);
 
     try IMetricOmmPoolActions(pool).swap(recipient, zeroForOne, amountSpecified, priceLimitX64, data) returns (
-      int128 a0, int128 a1
+      int128 a0,
+      int128 a1
     ) {
       amount0Delta = a0;
       amount1Delta = a1;
@@ -274,11 +274,15 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
 
   /// @notice Callback invoked by the pool during swap execution
   /// @inheritdoc IMetricOmmSwapCallback
-  function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata) external {
+  function metricOmmSwapCallback(
+    address token0,
+    address token1,
+    int256 amount0Delta,
+    int256 amount1Delta,
+    bytes calldata
+  ) external {
     (address payer, address pool, uint256 flags) = _loadSwapContext();
     if (msg.sender != pool) revert InvalidCallbackCaller();
-
-    (,, address token0, address token1,,,,,,,,,,) = IMetricOmmPoolImmutables(pool).getImmutables();
 
     bool zeroForOne = (flags & FLAG_ZERO_FOR_ONE) != 0;
     bool payerIsNative = (flags & FLAG_PAYER_IS_NATIVE) != 0;
@@ -303,14 +307,19 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
 
   // ============ Internal Functions ============
 
-  function _startSwap(address pool, address payer, bool payerIsNative, bool expectNativeOutput, bool zeroForOne)
-    private
-  {
-    (, address currentPool,) = _loadSwapContext();
+  function _startSwap(
+    address pool,
+    address payer,
+    bool payerIsNative,
+    bool expectNativeOutput,
+    bool zeroForOne
+  ) private {
+    (, address currentPool, ) = _loadSwapContext();
     if (currentPool != address(0)) revert SwapInProgress();
 
-    uint256 flags = (payerIsNative ? FLAG_PAYER_IS_NATIVE : 0) | (zeroForOne ? FLAG_ZERO_FOR_ONE : 0)
-      | (expectNativeOutput ? FLAG_EXPECT_NATIVE_OUTPUT : 0);
+    uint256 flags = (payerIsNative ? FLAG_PAYER_IS_NATIVE : 0) |
+      (zeroForOne ? FLAG_ZERO_FOR_ONE : 0) |
+      (expectNativeOutput ? FLAG_EXPECT_NATIVE_OUTPUT : 0);
     assembly ("memory-safe") {
       tstore(T_SLOT_PAYER, payer)
       tstore(T_SLOT_POOL, pool)
@@ -339,7 +348,8 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     _startSwap(pool, payer, payerIsNative, expectNativeOutput, zeroForOne);
 
     try IMetricOmmPoolActions(pool).swap(recipient, zeroForOne, amountSpecified, priceLimitX64, "") returns (
-      int128 a0, int128 a1
+      int128 a0,
+      int128 a1
     ) {
       amount0Delta = a0;
       amount1Delta = a1;
@@ -382,21 +392,21 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     if (amountInUsed > maxAmountIn) revert InputTooHigh(amountInUsed, maxAmountIn);
     uint256 refund = maxAmountIn - amountInUsed;
     if (refund == 0) return;
-    (bool ok,) = to.call{value: refund}("");
+    (bool ok, ) = to.call{value: refund}("");
     if (!ok) revert NativeTransferFailed();
   }
 
   function _unwrapAndSendNative(address to, uint256 amountOut) private {
     IWETH9(WETH).withdraw(amountOut);
-    (bool ok,) = to.call{value: amountOut}("");
+    (bool ok, ) = to.call{value: amountOut}("");
     if (!ok) revert NativeTransferFailed();
   }
 
-  function _decodeSwapResult(bool zeroForOne, int128 amount0Delta, int128 amount1Delta)
-    private
-    pure
-    returns (uint256 amountIn, uint256 amountOut)
-  {
+  function _decodeSwapResult(
+    bool zeroForOne,
+    int128 amount0Delta,
+    int128 amount1Delta
+  ) private pure returns (uint256 amountIn, uint256 amountOut) {
     if (zeroForOne) {
       if (amount0Delta <= 0 || amount1Delta >= 0) revert InvalidSwapDeltas();
       // forge-lint: disable-next-line(unsafe-typecast)
