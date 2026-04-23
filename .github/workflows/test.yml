@@ -12,13 +12,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Use default GITHUB_TOKEN for this repo. A PAT used as checkout token would also be used
+      # to fetch metric-periphery; a fine-grained PAT scoped only to metric-core then returns 403.
       - name: Check out Git repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Configure git for private Metric-OMM submodules
+        env:
+          SUBMODULE_PAT: ${{ secrets.PRIVATE_SUBMODULES_PAT }}
+        run: |
+          if [ -z "${SUBMODULE_PAT}" ]; then
+            echo "Set repository secret PRIVATE_SUBMODULES_PAT with read access to Metric-OMM/metric-core." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${SUBMODULE_PAT}@github.com/Metric-OMM/".insteadOf "https://github.com/Metric-OMM/"
+
+      - name: Fetch submodules
+        run: git submodule sync --recursive && git submodule update --init --force --depth 1 --recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          # Pin so `forge fmt --check` matches local installs (fmt output varies by release).
+          version: 1.5.1
+
+      - name: Check Solidity formatting
+        run: forge fmt --check
 
       - name: Build
         run: forge build
