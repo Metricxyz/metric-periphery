@@ -3,7 +3,7 @@ pragma solidity ^0.8.33;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmPoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolImmutables.sol";
+import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {MetricOmmPoolQuoter} from "./MetricOmmPoolQuoter.sol";
@@ -19,6 +19,8 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
   using SafeCast for int256;
 
   address internal immutable WETH;
+  /// @notice Factory that indexes `pool => (token0, token1)` via `getTokens` (matches metric-core deployment model).
+  address internal immutable POOL_FACTORY;
 
   // Transient (EIP-1153) swap context for the current swap.
   // Stored via TSTORE/TLOAD and cleared explicitly to allow multiple swaps in a single transaction.
@@ -37,15 +39,18 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
   error InputTooHigh(uint256 amountIn, uint256 maxAmountIn);
   error InvalidSwapDeltas();
   error InvalidWETH();
+  error InvalidPoolFactory();
   error NativeValueNotExpected();
   error NativeInputNotSupported(address token);
   error InsufficientNativeValue(uint256 required, uint256 available);
   error NativeTransferFailed();
   error NativeOutputNotSupported(address token);
 
-  constructor(address _weth) {
+  constructor(address _weth, address _poolFactory) {
     if (_weth == address(0)) revert InvalidWETH();
+    if (_poolFactory == address(0)) revert InvalidPoolFactory();
     WETH = _weth;
+    POOL_FACTORY = _poolFactory;
   }
 
   /// @notice Accept raw ETH only from WETH withdraws
@@ -278,7 +283,7 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     (address payer, address pool, uint256 flags) = _loadSwapContext();
     if (msg.sender != pool) revert InvalidCallbackCaller();
 
-    (,, address token0, address token1,,,,,,,,,,) = IMetricOmmPoolImmutables(pool).getImmutables();
+    (address token0, address token1) = IMetricOmmPoolFactory(POOL_FACTORY).getTokens(pool);
 
     bool zeroForOne = (flags & FLAG_ZERO_FOR_ONE) != 0;
     bool payerIsNative = (flags & FLAG_PAYER_IS_NATIVE) != 0;
