@@ -22,6 +22,10 @@ All dependencies are configured as git submodules under `lib/`.
 
 > **Note:** `metric-core` is private. Ensure your GitHub credentials (SSH key or token) have access.
 
+### CI (GitHub Actions)
+
+CI checks out this repository with the default `GITHUB_TOKEN`, then clones submodules in a separate step. That token cannot read other private repos, so add a **repository secret** `PRIVATE_SUBMODULES_PAT`: a [personal access token](https://github.com/settings/tokens) with **read access to `Metric-OMM/metric-core` only** (fine-grained is enough). The workflow rewrites only `https://github.com/Metric-OMM/…` URLs to use that PAT, so it must **not** be passed as the `actions/checkout` `token` input (that would authenticate the main fetch and a core-only PAT yields 403 on `metric-periphery`). Without the secret, submodule init fails (often “repository not found” for `metric-core`).
+
 ## Setup
 
 ### Install Foundry
@@ -62,11 +66,17 @@ With verbosity:
 forge test -vvv
 ```
 
-## Format
+## Formatting
 
 ```bash
+# Check formatting
+forge fmt --check
+
+# Fix formatting
 forge fmt
 ```
+
+CI pins the Foundry release in `.github/workflows/test.yml` so `forge fmt --check` and `forge test` match what runs on GitHub. Use the same Forge version locally as in that workflow (`forge --version`).
 
 ## Project Structure
 
