@@ -1,10 +1,21 @@
 #!/bin/sh
-# Runs before each local git commit: forge fmt --check, then forge test.
-# Enable once per clone: git config --local core.hooksPath .githooks
-# Skip when needed: git commit --no-verify
+# Runs before each commit: Prettier (non-Solidity), forge fmt --check, forge test.
+# Requires: npm install (once) for Prettier; Foundry on PATH.
+# Enable: git config --local core.hooksPath .githooks
+# Skip: git commit --no-verify
 
 set -e
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+if ! command -v npm >/dev/null 2>&1; then
+  echo "pre-commit: npm not found; install Node.js or run without hook (--no-verify)." >&2
+  exit 1
+fi
+if [ ! -d node_modules/prettier ]; then
+  echo "pre-commit: run npm install (Prettier missing under node_modules)." >&2
+  exit 1
+fi
+
+npm run format:prettier:check
 forge fmt --check
 forge test

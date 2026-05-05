@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -50,16 +50,14 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
 
   // ============ Constructor ============
 
-  constructor(address factory_) {
-    if (factory_ == address(0)) revert InvalidFactory();
-    FACTORY = factory_;
+  constructor(address factory) {
+    if (factory == address(0)) revert InvalidFactory();
+    FACTORY = factory;
   }
 
-  // =============================================================================
-  // External API (swap data views; `quoteSwap` lives on MetricOmmPoolQuoter)
-  // =============================================================================
+  // ============ External: swap data views ============
 
-  // --- Best bid / ask at current pool position (marginal + fee stack) ---
+  // ---- Best bid / ask (marginal + fee stack) ----
 
   /// @inheritdoc IMetricOmmPoolSwapDataProvider
   function getBestBidAndAsk(address pool) external view override returns (uint128 bestBidX64, uint128 bestAskX64) {
@@ -94,7 +92,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     bestBidX64 = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor).toUint128();
   }
 
-  // --- Per-bin depth ladders + oracle and reference bid/ask on the snapshot ---
+  // ---- Per-bin depth ladders ----
 
   /// @inheritdoc IMetricOmmPoolSwapDataProvider
   function getLiquidityDepth(address pool, uint8 maxBinsPerSide)
@@ -157,9 +155,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     );
   }
 
-  // =============================================================================
-  // Internal: factory, oracle, and packed depth read context
-  // =============================================================================
+  // ============ Internal: factory and depth context ============
 
   function _resolvePriceProvider(address pool) internal view returns (address provider) {
     provider = PoolStateLibrary._slot3(pool);
@@ -195,9 +191,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     lowCap = int8(lo);
   }
 
-  // =============================================================================
-  // Internal: Q64.64 price along int24 distance-in-E6 (getBestBidAndAsk path)
-  // =============================================================================
+  // ============ Internal: distance E6 to Q64.64 price ============
 
   function _distanceE6ToPriceX64(int24 distanceValueE6, uint256 midPriceX64, Math.Rounding rounding)
     internal
@@ -212,9 +206,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     return Math.mulDiv(midPriceX64, ONE_E6 - absNegativeDistanceE6, ONE_E6, rounding);
   }
 
-  // =============================================================================
-  // Internal: mid-oracle ladder geometry and human token scale
-  // =============================================================================
+  // ============ Internal: mid-oracle ladder geometry ============
 
   function _priceFromMidAndDistE6(uint256 midPriceX64, int256 distE6, Math.Rounding rounding)
     internal
@@ -237,9 +229,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     return amountScaled / scaleMultiplier;
   }
 
-  // =============================================================================
-  // Internal: reference best bid/ask on depth snapshot (current bin marginal + fees)
-  // =============================================================================
+  // ============ Internal: reference best bid/ask ============
 
   function _marginalBestBidAsk(
     address pool,
@@ -276,9 +266,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     bestBidX64 = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor).toUint128();
   }
 
-  // =============================================================================
-  // Internal: fee layers on marginal Q64.64, then per-ladder-row averages
-  // =============================================================================
+  // ============ Internal: fee-adjusted prices and depth accumulation ============
 
   function _feeAdjustedAskX64(uint256 marginalX64, uint256 buySpreadE6, uint256 notionalFeeE8)
     internal
@@ -336,9 +324,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     newCumToken0Sold = cumToken0Sold + token0Slice;
   }
 
-  // =============================================================================
-  // Internal: walk bins and materialize asks / bids depth arrays
-  // =============================================================================
+  // ============ Internal: depth ladder walks ============
 
   function _fillAsks(
     address pool,

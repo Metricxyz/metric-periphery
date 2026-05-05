@@ -29,6 +29,8 @@ All dependencies are configured as git submodules under `lib/`.
 
 CI checks out this repository with the default `GITHUB_TOKEN`, then clones submodules in a separate step. That token cannot read other private repos, so add a **repository secret** `PRIVATE_SUBMODULES_PAT`: a [personal access token](https://github.com/settings/tokens) with **read access to `Metric-OMM/metric-core` only** (fine-grained is enough). The workflow rewrites only `https://github.com/Metric-OMM/…` URLs to use that PAT, so it must **not** be passed as the `actions/checkout` `token` input (that would authenticate the main fetch and a core-only PAT yields 403 on `metric-periphery`). Without the secret, submodule init fails (often “repository not found” for `metric-core`).
 
+If `.gitmodules` was updated (e.g. org rename), run `git submodule sync --recursive` once so local remotes match.
+
 ## Setup
 
 ### Install Foundry
@@ -71,17 +73,18 @@ forge test -vvv
 
 ## Formatting
 
-```bash
-# Check formatting
-forge fmt --check
+- **Solidity**: Foundry only.
 
-# Fix formatting
+```bash
+forge fmt --check
 forge fmt
 ```
 
-CI pins the Foundry release in `.github/workflows/test.yml` so `forge fmt --check` and `forge test` match what runs on GitHub. Use the same Forge version locally as in that workflow (`forge --version`).
+- **Markdown / JSON / YAML** (optional): after `npm install`, run `npm run format:prettier` or `npm run format:prettier:check`. Solidity is listed in `.prettierignore` — use **`forge fmt`** for `.sol` files, not Prettier.
 
-Optional local pre-commit checks live in `.githooks/`; enable with `git config --local core.hooksPath .githooks` (see `docs/HOWTO.md`). Use `git commit --no-verify` to skip.
+CI runs Prettier check, `forge fmt --check`, build, and tests (see `.github/workflows/test.yml`). Workflows pin **Foundry 1.7.0** and **`solc` 0.8.35** — match locally (`forge --version`, same `foundry.toml` `solc`).
+
+Optional local pre-commit checks live in `.githooks/` (same pattern as **metric-core**): enable with `git config --local core.hooksPath .githooks`. The hook runs `npm run format:prettier:check`, `forge fmt --check`, and `forge test` (run `npm install` once). Use `git commit --no-verify` to skip.
 
 ## Project structure
 
@@ -95,9 +98,9 @@ contracts/
 │   └── MetricOmmPoolQuoter.sol       # Shared quoter; inherited by swapper and swap data provider
 └── mocks/
     └── MockWETH9.sol
-```
 
-Further layout and conventions are described under `docs/`.
+test/                    # Foundry tests (*.t.sol) and shared helpers (RouterTestFactory, SwapDataHelperTestBase, …)
+```
 
 ## License
 

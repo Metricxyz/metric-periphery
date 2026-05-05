@@ -32,11 +32,23 @@ jobs:
       - name: Fetch submodules
         run: git submodule sync --recursive && git submodule update --init --force --depth 1 --recursive
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Check Prettier (non-Solidity)
+        run: npm run format:prettier:check
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           # Pin so `forge fmt --check` matches local installs (fmt output varies by release).
-          version: 1.5.1
+          version: 1.7.0
 
       - name: Check Solidity formatting
         run: forge fmt --check

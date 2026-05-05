@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -16,10 +16,10 @@ import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core/mocks/MockERC20.sol";
-import {PoolInitPreprocessor} from "../../lib/metric-core/test/PoolInitPreprocessor.sol";
-import {MetricOmmPoolSwapper} from "../../contracts/MetricOmmPoolSwapper.sol";
-import {IMetricOmmPoolSwapper} from "../../contracts/interfaces/IMetricOmmPoolSwapper.sol";
-import {MockWETH9} from "../../contracts/mocks/MockWETH9.sol";
+import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
+import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
+import {IMetricOmmPoolSwapper} from "../contracts/interfaces/IMetricOmmPoolSwapper.sol";
+import {MockWETH9} from "../contracts/mocks/MockWETH9.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 
 uint256 constant Q64 = 2 ** 64;
@@ -82,11 +82,11 @@ contract MaliciousPoolForRouterTest {
   int128 public immutable AMOUNT0_DELTA;
   int128 public immutable AMOUNT1_DELTA;
 
-  constructor(address _token0, address _token1, int128 _amount0Delta, int128 _amount1Delta) {
-    TOKEN0 = _token0;
-    TOKEN1 = _token1;
-    AMOUNT0_DELTA = _amount0Delta;
-    AMOUNT1_DELTA = _amount1Delta;
+  constructor(address token0, address token1, int128 amount0Delta, int128 amount1Delta) {
+    TOKEN0 = token0;
+    TOKEN1 = token1;
+    AMOUNT0_DELTA = amount0Delta;
+    AMOUNT1_DELTA = amount1Delta;
   }
 
   function swap(address, bool, int128, uint128, bytes calldata data) external returns (int128, int128) {
@@ -102,9 +102,9 @@ contract ReentrantPoolForRouterTest {
   bool public nestedAttempted;
   bool public nestedRejectedWithSwapInProgress;
 
-  constructor(int128 _amount0Delta, int128 _amount1Delta) {
-    AMOUNT0_DELTA = _amount0Delta;
-    AMOUNT1_DELTA = _amount1Delta;
+  constructor(int128 amount0Delta, int128 amount1Delta) {
+    AMOUNT0_DELTA = amount0Delta;
+    AMOUNT1_DELTA = amount1Delta;
   }
 
   function swap(address recipient, bool zeroForOne, int128 amountSpecified, uint128, bytes calldata data)
@@ -140,8 +140,8 @@ contract LiquidityHelper is IMetricOmmModifyLiquidityCallback {
 
   address public immutable FACTORY;
 
-  constructor(address factory_) {
-    FACTORY = factory_;
+  constructor(address factory) {
+    FACTORY = factory;
   }
 
   function addLiquidityRange(address pool, uint80 salt, int256 lowerBin, int256 upperBin, uint256 sharesPerBin)
