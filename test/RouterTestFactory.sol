@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
-import {FactoryFeeCapsStub} from "../../lib/metric-core/test/FactoryFeeCapsStub.sol";
+import {FactoryFeeCapsStub} from "../lib/metric-core/test/FactoryFeeCapsStub.sol";
 import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
 
 /// @notice Minimal factory stub so `MetricOmmPoolSwapper` and liquidity callbacks can resolve pool tokens.

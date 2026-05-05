@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
 /// @title IMetricOmmPoolQuoter
 /// @notice Quote swap deltas by invoking pool simulation and decoding the revert payload.

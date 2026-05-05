@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.35;
 
-/// @title Interface for WETH9 (Wrapped Ether)
+/// @title IWETH9
+/// @notice Minimal wrapped Ether surface (`deposit` / `withdraw`) used by the swapper native paths.
 interface IWETH9 {
   function deposit() external payable;
 

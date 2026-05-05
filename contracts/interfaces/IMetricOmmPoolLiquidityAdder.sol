@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {

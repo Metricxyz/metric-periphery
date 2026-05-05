@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
 /// forge-config: default.fuzz.runs = 128
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
-import {MetricOmmPoolSwapper} from "../../contracts/MetricOmmPoolSwapper.sol";
-import {IMetricOmmPoolSwapDataProvider} from "../../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
-import {MetricOmmPoolSwapDataProvider} from "../../contracts/MetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
+import {IMetricOmmPoolSwapDataProvider} from "../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolSwapDataProvider} from "../contracts/MetricOmmPoolSwapDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 import {MockPriceProviderSDH, SwapDataHelperTestBase} from "./SwapDataHelperTestBase.sol";
 

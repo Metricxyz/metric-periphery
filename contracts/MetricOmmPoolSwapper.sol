@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -44,11 +44,11 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
 
   // ============ Constructor ============
 
-  constructor(address _weth, address _poolFactory) {
-    if (_weth == address(0)) revert InvalidWETH();
-    if (_poolFactory == address(0)) revert InvalidPoolFactory();
-    WETH = _weth;
-    POOL_FACTORY = _poolFactory;
+  constructor(address weth, address poolFactory) {
+    if (weth == address(0)) revert InvalidWETH();
+    if (poolFactory == address(0)) revert InvalidPoolFactory();
+    WETH = weth;
+    POOL_FACTORY = poolFactory;
   }
 
   // ============ External: lifecycle ============
