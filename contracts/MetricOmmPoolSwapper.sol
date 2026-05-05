@@ -1,50 +1,48 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.33;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
-import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
-import {MetricOmmPoolQuoter} from "./MetricOmmPoolQuoter.sol";
-import {WrappedERC20} from "./libraries/WrappedERC20.sol";
+import {MetricOmmPoolQuoter} from "./common/MetricOmmPoolQuoter.sol";
+import {IMetricOmmPoolSwapper} from "./interfaces/IMetricOmmPoolSwapper.sol";
 
-/// @title MetricOmmSwapRouter
-/// @notice Router contract for executing swaps through MetricOmm pools
-/// @dev Implements IMetricOmmSwapCallback to handle the callback pattern.
+/// @title MetricOmmPoolSwapper
+/// @notice Executes swaps through MetricOmm pools with callback settlement and native ETH paths.
+/// @dev Implements callback settlement and transient-context guarded swap orchestration.
 ///      Uses transient storage (EIP-1153) for swap context.
-contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
-  using WrappedERC20 for address;
+/// @dev Price-limit sentinel semantics:
+///      - `zeroForOne == true`: `priceLimitX64 == 0` means unconstrained lower bound.
+///      - `zeroForOne == false`: `priceLimitX64 == type(uint128).max` means unconstrained upper bound.
+///      Opposite sentinels are rejected with `InvalidPriceLimitForDirection`.
+contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
+  using SafeERC20 for IERC20;
   using SafeCast for uint256;
   using SafeCast for int256;
+
+  // ============ Constants ============
+
+  // Transient (EIP-1153) swap context for the current swap.
+  // Stored via TSTORE/TLOAD and cleared explicitly to allow multiple swaps in a single transaction.
+  uint256 private constant T_SLOT_SWAP_PAYER = 0;
+  uint256 private constant T_SLOT_SWAP_POOL = 1;
+  uint256 private constant T_SLOT_SWAP_FLAGS = 2;
+
+  uint256 private constant FLAG_PAYER_IS_NATIVE = 1 << 0;
+  uint256 private constant FLAG_ZERO_FOR_ONE = 1 << 1;
+  uint256 private constant FLAG_EXPECT_NATIVE_OUTPUT = 1 << 2;
+  uint128 private constant MAX_INT128_AS_UINT128 = uint128(type(int128).max);
+
+  // ============ State Variables ============
 
   address internal immutable WETH;
   /// @notice Factory that indexes `pool => (token0, token1)` via `getTokens` (matches metric-core deployment model).
   address internal immutable POOL_FACTORY;
 
-  // Transient (EIP-1153) swap context for the current swap.
-  // Stored via TSTORE/TLOAD and cleared explicitly to allow multiple swaps in a single transaction.
-  uint256 private constant T_SLOT_PAYER = 0;
-  uint256 private constant T_SLOT_POOL = 1;
-  uint256 private constant T_SLOT_FLAGS = 2;
-
-  uint256 private constant FLAG_PAYER_IS_NATIVE = 1 << 0;
-  uint256 private constant FLAG_ZERO_FOR_ONE = 1 << 1;
-  uint256 private constant FLAG_EXPECT_NATIVE_OUTPUT = 1 << 2;
-
-  error TransactionExpired(uint256 deadline, uint256 timestamp);
-  error InvalidCallbackCaller();
-  error SwapInProgress();
-  error InsufficientOutput(uint256 amountOut, uint256 minAmountOut);
-  error InputTooHigh(uint256 amountIn, uint256 maxAmountIn);
-  error InvalidSwapDeltas();
-  error InvalidWETH();
-  error InvalidPoolFactory();
-  error NativeValueNotExpected();
-  error NativeInputNotSupported(address token);
-  error InsufficientNativeValue(uint256 required, uint256 available);
-  error NativeTransferFailed();
-  error NativeOutputNotSupported(address token);
+  // ============ Constructor ============
 
   constructor(address _weth, address _poolFactory) {
     if (_weth == address(0)) revert InvalidWETH();
@@ -53,10 +51,14 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     POOL_FACTORY = _poolFactory;
   }
 
+  // ============ External: lifecycle ============
+
   /// @notice Accept raw ETH only from WETH withdraws
   receive() external payable {
     if (msg.sender != WETH) revert NativeTransferFailed();
   }
+
+  // ============ External: spot swap ============
 
   /// @notice Execute a swap on a pool (simple version without data)
   function swap(
@@ -66,9 +68,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     int128 amountSpecified,
     uint128 priceLimitX64,
     uint256 deadline
-  ) public payable returns (int128 amount0Delta, int128 amount1Delta) {
+  ) public payable override returns (int128 amount0Delta, int128 amount1Delta) {
     return swap(pool, recipient, zeroForOne, amountSpecified, priceLimitX64, deadline, "");
   }
+
+  // ============ External: token swap ============
 
   /// @notice Execute a swap on a pool with custom callback data
   function swap(
@@ -79,24 +83,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 deadline,
     bytes memory data
-  ) public payable returns (int128 amount0Delta, int128 amount1Delta) {
+  ) public payable override returns (int128 amount0Delta, int128 amount1Delta) {
     _checkDeadline(deadline);
     if (msg.value != 0) revert NativeValueNotExpected();
-
-    _startSwap(pool, msg.sender, false, false, zeroForOne);
-
-    try IMetricOmmPoolActions(pool).swap(recipient, zeroForOne, amountSpecified, priceLimitX64, data) returns (
-      int128 a0, int128 a1
-    ) {
-      amount0Delta = a0;
-      amount1Delta = a1;
-    } catch (bytes memory reason) {
-      _clearSwap();
-      assembly {
-        revert(add(reason, 32), mload(reason))
-      }
-    }
-
+    (amount0Delta, amount1Delta) =
+      _swapWithContext(pool, msg.sender, recipient, zeroForOne, amountSpecified, priceLimitX64, false, false, data);
     _clearSwap();
   }
 
@@ -109,22 +100,16 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline
-  ) external payable returns (uint256 amountOut, uint256 amountInUsed) {
+  ) external payable override returns (uint256 amountOut, uint256 amountInUsed) {
     if (msg.value != 0) revert NativeValueNotExpected();
-    (int128 amount0Delta, int128 amount1Delta) = swap(
-      pool,
-      recipient,
-      zeroForOne,
-      // forge-lint: disable-next-line(unsafe-typecast)
-      int128(amountIn),
-      priceLimitX64,
-      deadline,
-      ""
-    );
+    (int128 amount0Delta, int128 amount1Delta) =
+      swap(pool, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, deadline, "");
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
 
     if (amountOut < minAmountOut) revert InsufficientOutput(amountOut, minAmountOut);
   }
+
+  // ============ External: native <-> token swap ============
 
   /// @notice Swap with exact output amount and maximum input limit
   function swapExactOutput(
@@ -135,18 +120,10 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline
-  ) external payable returns (uint256 amountOut, uint256 amountInUsed) {
+  ) external payable override returns (uint256 amountOut, uint256 amountInUsed) {
     if (msg.value != 0) revert NativeValueNotExpected();
-    (int128 amount0Delta, int128 amount1Delta) = swap(
-      pool,
-      recipient,
-      zeroForOne,
-      // forge-lint: disable-next-line(unsafe-typecast)
-      -int128(amountOutDesired),
-      priceLimitX64,
-      deadline,
-      ""
-    );
+    (int128 amount0Delta, int128 amount1Delta) =
+      swap(pool, recipient, zeroForOne, _toSignedExactOutput(amountOutDesired), priceLimitX64, deadline, "");
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
 
     if (amountOut < amountOutDesired) revert InvalidSwapDeltas();
@@ -162,20 +139,12 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline
-  ) external payable returns (uint256 amountOut, uint256 amountInUsed) {
+  ) external payable override returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
     if (msg.value != uint256(amountIn)) revert InsufficientNativeValue(amountIn, msg.value);
 
     (int128 amount0Delta, int128 amount1Delta) = _swapWithContext(
-      pool,
-      msg.sender,
-      recipient,
-      zeroForOne,
-      // forge-lint: disable-next-line(unsafe-typecast)
-      int128(amountIn),
-      priceLimitX64,
-      true,
-      false
+      pool, msg.sender, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, true, false, ""
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
 
@@ -193,20 +162,12 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline
-  ) external payable returns (uint256 amountOut, uint256 amountInUsed) {
+  ) external payable override returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
     if (msg.value != maxAmountIn) revert InsufficientNativeValue(maxAmountIn, msg.value);
 
     (int128 amount0Delta, int128 amount1Delta) = _swapWithContext(
-      pool,
-      msg.sender,
-      recipient,
-      zeroForOne,
-      // forge-lint: disable-next-line(unsafe-typecast)
-      -int128(amountOutDesired),
-      priceLimitX64,
-      true,
-      false
+      pool, msg.sender, recipient, zeroForOne, _toSignedExactOutput(amountOutDesired), priceLimitX64, true, false, ""
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
 
@@ -225,19 +186,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline
-  ) external returns (uint256 amountOut, uint256 amountInUsed) {
+  ) external override returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
 
     (int128 amount0Delta, int128 amount1Delta) = _swapWithContext(
-      pool,
-      msg.sender,
-      address(this),
-      zeroForOne,
-      // forge-lint: disable-next-line(unsafe-typecast)
-      int128(amountIn),
-      priceLimitX64,
-      false,
-      true
+      pool, msg.sender, address(this), zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, false, true, ""
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
 
@@ -255,7 +208,7 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline
-  ) external returns (uint256 amountOut, uint256 amountInUsed) {
+  ) external override returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
 
     (int128 amount0Delta, int128 amount1Delta) = _swapWithContext(
@@ -263,11 +216,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
       msg.sender,
       address(this),
       zeroForOne,
-      // forge-lint: disable-next-line(unsafe-typecast)
-      -int128(amountOutDesired),
+      _toSignedExactOutput(amountOutDesired),
       priceLimitX64,
       false,
-      true
+      true,
+      ""
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
 
@@ -277,9 +230,10 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     _clearSwap();
   }
 
-  /// @notice Callback invoked by the pool during swap execution
-  /// @inheritdoc IMetricOmmSwapCallback
-  function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata) external {
+  // ============ External: callback settlement ============
+
+  /// @notice Callback invoked by pool during swap execution to settle input leg.
+  function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata) external override {
     (address payer, address pool, uint256 flags) = _loadSwapContext();
     if (msg.sender != pool) revert InvalidCallbackCaller();
 
@@ -306,7 +260,7 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     }
   }
 
-  // ============ Internal Functions ============
+  // ============ Internal: swap orchestration ============
 
   function _startSwap(address pool, address payer, bool payerIsNative, bool expectNativeOutput, bool zeroForOne)
     private
@@ -316,19 +270,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
 
     uint256 flags = (payerIsNative ? FLAG_PAYER_IS_NATIVE : 0) | (zeroForOne ? FLAG_ZERO_FOR_ONE : 0)
       | (expectNativeOutput ? FLAG_EXPECT_NATIVE_OUTPUT : 0);
-    assembly ("memory-safe") {
-      tstore(T_SLOT_PAYER, payer)
-      tstore(T_SLOT_POOL, pool)
-      tstore(T_SLOT_FLAGS, flags)
-    }
+    _setSwapContext(payer, pool, flags);
   }
 
   function _clearSwap() private {
-    assembly ("memory-safe") {
-      tstore(T_SLOT_PAYER, 0)
-      tstore(T_SLOT_POOL, 0)
-      tstore(T_SLOT_FLAGS, 0)
-    }
+    _clearSwapContext();
   }
 
   function _swapWithContext(
@@ -339,15 +285,18 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     int128 amountSpecified,
     uint128 priceLimitX64,
     bool payerIsNative,
-    bool expectNativeOutput
+    bool expectNativeOutput,
+    bytes memory data
   ) private returns (int128 amount0Delta, int128 amount1Delta) {
+    _validatePriceLimit(zeroForOne, priceLimitX64);
     _startSwap(pool, payer, payerIsNative, expectNativeOutput, zeroForOne);
 
-    try IMetricOmmPoolActions(pool).swap(recipient, zeroForOne, amountSpecified, priceLimitX64, "") returns (
+    try IMetricOmmPoolActions(pool).swap(recipient, zeroForOne, amountSpecified, priceLimitX64, data) returns (
       int128 a0, int128 a1
     ) {
       amount0Delta = a0;
       amount1Delta = a1;
+      _validateAmountSpecifiedMatch(zeroForOne, amountSpecified, amount0Delta, amount1Delta);
     } catch (bytes memory reason) {
       _clearSwap();
       assembly {
@@ -358,9 +307,11 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     // Leave transient context intact for post-swap settlement (caller clears).
   }
 
+  // ============ Internal: settlement and native handling ============
+
   function _payInput(address token, uint256 amount, address payer, address pool, bool payerIsNative) private {
     if (!payerIsNative) {
-      token.safeTransferFrom(payer, pool, amount);
+      IERC20(token).safeTransferFrom(payer, pool, amount);
       return;
     }
 
@@ -368,15 +319,7 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     if (address(this).balance < amount) revert InsufficientNativeValue(amount, address(this).balance);
 
     IWETH9(WETH).deposit{value: amount}();
-    WETH.safeTransfer(pool, amount);
-  }
-
-  function _loadSwapContext() private view returns (address payer, address pool, uint256 flags) {
-    assembly ("memory-safe") {
-      payer := tload(T_SLOT_PAYER)
-      pool := tload(T_SLOT_POOL)
-      flags := tload(T_SLOT_FLAGS)
-    }
+    IERC20(WETH).safeTransfer(pool, amount);
   }
 
   function _checkDeadline(uint256 deadline) private view {
@@ -397,6 +340,8 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
     if (!ok) revert NativeTransferFailed();
   }
 
+  // ============ Internal: validation and decoding ============
+
   function _decodeSwapResult(bool zeroForOne, int128 amount0Delta, int128 amount1Delta)
     private
     pure
@@ -415,5 +360,87 @@ contract MetricOmmSwapRouter is IMetricOmmSwapCallback, MetricOmmPoolQuoter {
       // forge-lint: disable-next-line(unsafe-typecast)
       amountOut = uint128(-amount0Delta);
     }
+  }
+
+  function _validateAmountSpecifiedMatch(
+    bool zeroForOne,
+    int128 amountSpecified,
+    int128 amount0Delta,
+    int128 amount1Delta
+  ) private pure {
+    if (amountSpecified == 0) {
+      if (amount0Delta != 0 || amount1Delta != 0) {
+        revert AmountSpecifiedMismatch(0, amount0Delta != 0 ? amount0Delta : amount1Delta);
+      }
+      return;
+    }
+
+    int128 actual =
+      amountSpecified > 0 ? (zeroForOne ? amount0Delta : amount1Delta) : (zeroForOne ? amount1Delta : amount0Delta);
+    if (amountSpecified > 0) {
+      if (actual <= 0 || actual > amountSpecified) revert AmountSpecifiedMismatch(amountSpecified, actual);
+      return;
+    }
+    if (actual >= 0 || actual < amountSpecified) revert AmountSpecifiedMismatch(amountSpecified, actual);
+  }
+
+  function _validatePriceLimit(bool zeroForOne, uint128 priceLimitX64) private pure {
+    if (zeroForOne) {
+      if (priceLimitX64 == type(uint128).max) revert InvalidPriceLimitForDirection(true, priceLimitX64);
+      return;
+    }
+    if (priceLimitX64 == 0) revert InvalidPriceLimitForDirection(false, priceLimitX64);
+  }
+
+  function _toSignedExactInput(uint128 amountIn) private pure returns (int128 amountSpecified) {
+    if (amountIn > MAX_INT128_AS_UINT128) revert AmountTooLarge(amountIn);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    amountSpecified = int128(amountIn);
+  }
+
+  function _toSignedExactOutput(uint128 amountOutDesired) private pure returns (int128 amountSpecified) {
+    if (amountOutDesired > MAX_INT128_AS_UINT128) revert AmountTooLarge(amountOutDesired);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    amountSpecified = -int128(amountOutDesired);
+  }
+
+  // ============ Internal: transient context storage ============
+
+  function _setSwapContext(address payer, address pool, uint256 flags) private {
+    _tstoreAddress(T_SLOT_SWAP_PAYER, payer);
+    _tstoreAddress(T_SLOT_SWAP_POOL, pool);
+    _tstore(T_SLOT_SWAP_FLAGS, flags);
+  }
+
+  function _clearSwapContext() private {
+    _tstoreAddress(T_SLOT_SWAP_PAYER, address(0));
+    _tstoreAddress(T_SLOT_SWAP_POOL, address(0));
+    _tstore(T_SLOT_SWAP_FLAGS, 0);
+  }
+
+  function _loadSwapContext() private view returns (address payer, address pool, uint256 flags) {
+    payer = _tloadAddress(T_SLOT_SWAP_PAYER);
+    pool = _tloadAddress(T_SLOT_SWAP_POOL);
+    flags = _tload(T_SLOT_SWAP_FLAGS);
+  }
+
+  function _tload(uint256 slot) private view returns (uint256 value) {
+    assembly ("memory-safe") {
+      value := tload(slot)
+    }
+  }
+
+  function _tstore(uint256 slot, uint256 value) private {
+    assembly ("memory-safe") {
+      tstore(slot, value)
+    }
+  }
+
+  function _tloadAddress(uint256 slot) private view returns (address value) {
+    value = address(uint160(_tload(slot)));
+  }
+
+  function _tstoreAddress(uint256 slot, address value) private {
+    _tstore(slot, uint256(uint160(value)));
   }
 }
