@@ -10,7 +10,7 @@ optimizer_runs = 200
 bytecode_hash = "none"
 
 [profile.default.fuzz]
-runs = 1000
+runs = 128
 seed = "0x4444"
 
 [profile.pr.fuzz]

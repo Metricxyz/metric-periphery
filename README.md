@@ -1,13 +1,16 @@
 # Metric Periphery
 
-Periphery contracts for MetricOMM protocol - Router and Quoter contracts for swapping.
+Periphery contracts for the MetricOMM protocol: pool swaps, read-only swap and depth data, and liquidity adds with caller-funded settlement.
 
 ## Overview
 
-This repository contains the periphery contracts that interact with MetricOMM core pools:
+Main Solidity contracts (implementation):
 
-- **MetricOmmSwapRouter** - Router contract for executing swaps with support for native ETH
-- **MetricOmmPoolQuoter** - Quoter contract for simulating swaps without execution
+- **MetricOmmPoolSwapper** — Executes swaps against pools, including native ETH paths, and inherits **MetricOmmPoolQuoter** for `quoteSwap`-style simulation on the same code path.
+- **MetricOmmPoolSwapDataProvider** — Read-only contract combining best bid/ask, liquidity depth ladders, and quoter behavior; extends the shared **MetricOmmPoolQuoter** base from `contracts/common/`.
+- **MetricOmmPoolLiquidityAdder** — Adds liquidity on behalf of callers with max-token caps and weighted or exact-share flows.
+
+Shared **MetricOmmPoolQuoter** is in `contracts/common/MetricOmmPoolQuoter.sol` and is extended by both the swapper and the swap data provider.
 
 ## Dependencies
 
@@ -78,22 +81,23 @@ forge fmt
 
 CI pins the Foundry release in `.github/workflows/test.yml` so `forge fmt --check` and `forge test` match what runs on GitHub. Use the same Forge version locally as in that workflow (`forge --version`).
 
-## Project Structure
+Optional local pre-commit checks live in `.githooks/`; enable with `git config --local core.hooksPath .githooks` (see `docs/HOWTO.md`). Use `git commit --no-verify` to skip.
 
-```
+## Project structure
+
+```text
 contracts/
-├── MetricOmmSwapRouter.sol    # Main router for swaps
-├── MetricOmmPoolQuoter.sol    # Quoter for swap simulation
-├── ChunkDeployer.sol          # Large contract deployment helper
-├── interfaces/
-│   ├── IWETH9.sol             # WETH interface
-│   └── callbacks/
-│       └── IMetricOmmSwapCallback.sol
-├── libraries/
-│   └── WrappedERC20.sol       # Safe ERC20 operations
+├── MetricOmmPoolSwapper.sol
+├── MetricOmmPoolLiquidityAdder.sol
+├── MetricOmmPoolSwapDataProvider.sol
+├── interfaces/          # IMetricOmmPoolSwapper, IMetricOmmPoolQuoter, IMetricOmmPoolSwapDataProvider, IMetricOmmPoolLiquidityAdder, IWETH9
+├── common/
+│   └── MetricOmmPoolQuoter.sol       # Shared quoter; inherited by swapper and swap data provider
 └── mocks/
-    └── MockWETH9.sol          # WETH mock for testing
+    └── MockWETH9.sol
 ```
+
+Further layout and conventions are described under `docs/`.
 
 ## License
 
