@@ -17,7 +17,8 @@ import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../../lib/metric-core/test/PoolInitPreprocessor.sol";
-import {MetricOmmSwapRouter} from "../../contracts/MetricOmmSwapRouter.sol";
+import {MetricOmmPoolSwapper} from "../../contracts/MetricOmmPoolSwapper.sol";
+import {IMetricOmmPoolSwapper} from "../../contracts/interfaces/IMetricOmmPoolSwapper.sol";
 import {MockWETH9} from "../../contracts/mocks/MockWETH9.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 
@@ -89,7 +90,46 @@ contract MaliciousPoolForRouterTest {
   }
 
   function swap(address, bool, int128, uint128, bytes calldata data) external returns (int128, int128) {
-    MetricOmmSwapRouter(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
+    MetricOmmPoolSwapper(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
+    return (AMOUNT0_DELTA, AMOUNT1_DELTA);
+  }
+}
+
+/// @notice Pool that tries nested router swap while a swap is in progress.
+contract ReentrantPoolForRouterTest {
+  int128 public immutable AMOUNT0_DELTA;
+  int128 public immutable AMOUNT1_DELTA;
+  bool public nestedAttempted;
+  bool public nestedRejectedWithSwapInProgress;
+
+  constructor(int128 _amount0Delta, int128 _amount1Delta) {
+    AMOUNT0_DELTA = _amount0Delta;
+    AMOUNT1_DELTA = _amount1Delta;
+  }
+
+  function swap(address recipient, bool zeroForOne, int128 amountSpecified, uint128, bytes calldata data)
+    external
+    returns (int128, int128)
+  {
+    nestedAttempted = true;
+    try MetricOmmPoolSwapper(payable(msg.sender))
+      .swap(
+        address(this),
+        recipient,
+        zeroForOne,
+        amountSpecified,
+        zeroForOne ? uint128(0) : type(uint128).max,
+        type(uint256).max,
+        data
+      ) {
+      revert("nested-swap-should-revert");
+    } catch (bytes memory reason) {
+      if (reason.length >= 4 && bytes4(reason) == IMetricOmmPoolSwapper.SwapInProgress.selector) {
+        nestedRejectedWithSwapInProgress = true;
+      }
+    }
+
+    MetricOmmPoolSwapper(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
   }
 }
@@ -134,9 +174,9 @@ contract LiquidityHelper is IMetricOmmModifyLiquidityCallback {
   }
 }
 
-contract MetricOmmSwapRouterNativeTest is Test, PoolInitPreprocessor {
+contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
   MetricOmmPool pool;
-  MetricOmmSwapRouter router;
+  MetricOmmPoolSwapper router;
   RouterTestFactory factoryStub;
   MockWETH9 weth;
   MockERC20 token1;
@@ -220,7 +260,7 @@ contract MetricOmmSwapRouterNativeTest is Test, PoolInitPreprocessor {
       address(this)
     );
 
-    router = new MetricOmmSwapRouter(address(weth), address(factoryStub));
+    router = new MetricOmmPoolSwapper(address(weth), address(factoryStub));
 
     lpContract = new LiquidityHelper(address(factoryStub));
 
@@ -243,8 +283,11 @@ contract MetricOmmSwapRouterNativeTest is Test, PoolInitPreprocessor {
 
     vm.deal(swapper, 100 ether);
     token1.mint(swapper, 1_000_000e18);
-    vm.prank(swapper);
+    vm.startPrank(swapper);
+    weth.deposit{value: 20 ether}();
+    weth.approve(address(router), type(uint256).max);
     token1.approve(address(router), type(uint256).max);
+    vm.stopPrank();
   }
 
   function test_swapExactInputNativeForTokens() public {
@@ -337,7 +380,7 @@ contract MetricOmmSwapRouterNativeTest is Test, PoolInitPreprocessor {
     uint256 poolToken1Before = token1.balanceOf(address(malicious));
 
     vm.prank(swapper);
-    router.swap(address(malicious), swapper, true, 1, 0, type(uint256).max);
+    router.swap(address(malicious), swapper, false, 1000, type(uint128).max, type(uint256).max);
 
     assertEq(token1.balanceOf(victim), victimToken1Before, "victim funds unchanged");
     assertEq(token1.balanceOf(address(malicious)) - poolToken1Before, 1000, "malicious pool received from swapper");
@@ -349,8 +392,65 @@ contract MetricOmmSwapRouterNativeTest is Test, PoolInitPreprocessor {
 
     vm.warp(nowTs);
     vm.prank(swapper);
-    vm.expectRevert(abi.encodeWithSelector(MetricOmmSwapRouter.TransactionExpired.selector, deadline, nowTs));
+    vm.expectRevert(abi.encodeWithSelector(IMetricOmmPoolSwapper.TransactionExpired.selector, deadline, nowTs));
     router.swap(address(pool), recipient, true, 1, 0, deadline);
+  }
+
+  function test_swap_revertsOnInvalidPriceLimitSentinel() public {
+    vm.prank(swapper);
+    vm.expectRevert(
+      abi.encodeWithSelector(IMetricOmmPoolSwapper.InvalidPriceLimitForDirection.selector, false, uint128(0))
+    );
+    router.swap(address(pool), recipient, false, 1, 0, type(uint256).max);
+
+    vm.prank(swapper);
+    vm.expectRevert(
+      abi.encodeWithSelector(IMetricOmmPoolSwapper.InvalidPriceLimitForDirection.selector, true, type(uint128).max)
+    );
+    router.swap(address(pool), recipient, true, 1, type(uint128).max, type(uint256).max);
+  }
+
+  function test_swap_rejectsNestedSwapAndClearsContext() public {
+    ReentrantPoolForRouterTest reentrant = new ReentrantPoolForRouterTest(1000, -1);
+    factoryStub.registerPool(
+      address(reentrant),
+      PoolImmutables({
+        token0: address(weth),
+        token1: address(token1),
+        immutablePriceProvider: address(0),
+        depositAllowlistProvider: address(0),
+        swapAllowlistProvider: address(0),
+        reportSwapToPriceProvider: false,
+        token0ScaleMultiplier: 1,
+        token1ScaleMultiplier: 1,
+        initialScaledAmount0PerShareE18: 1,
+        initialScaledAmount1PerShareE18: 1,
+        minimalMintableLiquidity: 1,
+        lowestBin: 0,
+        highestBin: 0
+      }),
+      PoolFeeConfig({protocolSpreadFeeE6: 0, adminSpreadFeeE6: 0, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0}),
+      address(0),
+      address(0)
+    );
+
+    vm.prank(swapper);
+    (int128 a0, int128 a1) = router.swap(address(reentrant), recipient, true, 1000, 0, type(uint256).max);
+    assertEq(a0, 1000);
+    assertEq(a1, -1);
+    assertTrue(reentrant.nestedAttempted(), "nested call attempted");
+    assertTrue(reentrant.nestedRejectedWithSwapInProgress(), "nested call rejected by guard");
+
+    // Verify context is cleared and router remains usable in same test transaction.
+    vm.prank(swapper);
+    router.swap(address(pool), recipient, true, 1000, 0, type(uint256).max);
+  }
+
+  function test_swap_twoSequentialCallsSameTx() public {
+    vm.startPrank(swapper);
+    router.swap(address(pool), recipient, true, 1000, 0, type(uint256).max);
+    router.swap(address(pool), recipient, true, 1000, 0, type(uint256).max);
+    vm.stopPrank();
   }
 
   function test_swapExactOutputTokensForNative() public {
@@ -371,6 +471,34 @@ contract MetricOmmSwapRouterNativeTest is Test, PoolInitPreprocessor {
     assertEq(token1Before - token1.balanceOf(swapper), amountInUsed, "swapper spent tokens");
     assertEq(address(router).balance, 0, "router ETH balance is 0");
     assertEq(weth.balanceOf(address(router)), 0, "router WETH balance is 0");
+  }
+
+  function testFuzz_swap_noRevertWhenSufficientLiquidity_andSpecifiedMatches(
+    uint96 rawAmount,
+    bool zeroForOne,
+    bool exactInput
+  ) public {
+    uint128 amount = uint128(bound(uint256(rawAmount), 1, 1_000_000));
+    int128 amountSpecified = exactInput
+      // forge-lint: disable-next-line(unsafe-typecast)
+      ? int128(amount)
+      // forge-lint: disable-next-line(unsafe-typecast)
+      : -int128(amount);
+    uint128 priceLimitX64 = zeroForOne ? 0 : type(uint128).max;
+
+    (int128 q0, int128 q1) =
+      router.quoteSwap(address(pool), zeroForOne, amountSpecified, priceLimitX64, uint128(Q64), uint128(Q64));
+    int128 specifiedSideDelta = exactInput ? (zeroForOne ? q0 : q1) : (zeroForOne ? q1 : q0);
+    vm.assume(specifiedSideDelta == amountSpecified);
+
+    vm.prank(swapper);
+    (int128 a0, int128 a1) =
+      router.swap(address(pool), recipient, zeroForOne, amountSpecified, priceLimitX64, type(uint256).max);
+
+    int128 actualSpecifiedSideDelta = exactInput ? (zeroForOne ? a0 : a1) : (zeroForOne ? a1 : a0);
+    assertEq(actualSpecifiedSideDelta, amountSpecified, "specified side delta must match amountSpecified");
+    assertEq(a0, q0, "amount0 delta mismatch vs quote");
+    assertEq(a1, q1, "amount1 delta mismatch vs quote");
   }
 
   /// @dev One packed word: five bins, each with `lengthE6` distance span and zero add fees.

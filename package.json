@@ -1,7 +1,7 @@
 {
   "name": "@metric/periphery",
   "version": "1.0.0",
-  "description": "Periphery contracts for MetricOMM (Router, Quoter)",
+  "description": "Periphery contracts for MetricOMM (pool swapper, quoter, liquidity adder)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Metric-OMM/metric-periphery.git"
