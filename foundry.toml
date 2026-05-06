@@ -9,6 +9,10 @@ optimizer = true
 # Deployment-facing contracts: favor runtime gas over bytecode size
 optimizer_runs = 99999
 bytecode_hash = "none"
+# forge-std cheatcodes use `error` as an identifier (solc 6335).
+# Fat forge integration tests exceed EIP-170 initcode size (3860); they are never mainnet-deployed.
+# Periphery uses EIP-1153 transient storage with explicit context clear (solc 2394 notice).
+ignored_error_codes = [6335, 3860, 2394]
 
 [profile.default.fuzz]
 runs = 128

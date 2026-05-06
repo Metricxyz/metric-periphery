@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmPoolQuoter} from "../interfaces/IMetricOmmPoolQuoter.sol";
@@ -10,8 +9,6 @@ import {IMetricOmmPoolQuoter} from "../interfaces/IMetricOmmPoolQuoter.sol";
 /// @notice Revert-decoding quote adapter over `simulateSwapAndRevert`.
 /// @dev Shared by `MetricOmmPoolSwapper` and `MetricOmmPoolSwapDataProvider`.
 contract MetricOmmPoolQuoter is IMetricOmmPoolQuoter {
-  using SafeCast for int256;
-
   /// @inheritdoc IMetricOmmPoolQuoter
   function quoteSwap(
     address pool,
@@ -33,8 +30,11 @@ contract MetricOmmPoolQuoter is IMetricOmmPoolQuoter {
           a0 := mload(add(reason, 36))
           a1 := mload(add(reason, 68))
         }
-        amount0Delta = a0.toInt128();
-        amount1Delta = a1.toInt128();
+        // Safe: values returned from simulateSwapAndRevert are bounded by int128.max and int128.min.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        amount0Delta = int128(a0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        amount1Delta = int128(a1);
         return (amount0Delta, amount1Delta);
       } else {
         revert WrappedError(pool, IMetricOmmPoolActions.simulateSwapAndRevert.selector, reason, "");

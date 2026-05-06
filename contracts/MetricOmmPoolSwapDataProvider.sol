@@ -44,6 +44,14 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
 
   uint256 internal constant MAX_POS_U104 = type(uint104).max;
 
+  /// @dev Mutable walk state for `_fillAsks` to keep the outer loop stack shallow.
+  struct AskFillCtx {
+    uint256 cumAmt;
+    uint256 cumWeighted;
+    int256 cumDistE6;
+    uint256 out;
+  }
+
   // ============ State Variables ============
 
   address internal immutable FACTORY;
@@ -75,8 +83,11 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
 
     uint256 midPriceX64 = Math.sqrt(uint256(bidFromOracleX64) * uint256(askFromOracleX64));
     uint256 lowerPriceX64 = _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6, midPriceX64, Math.Rounding.Floor);
-    uint256 upperPriceX64 =
-      _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6 + int24(uint24(lengthE6)), midPriceX64, Math.Rounding.Floor);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    int256 distUpperE6 = int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6));
+    // safe typecast: factory validates all distances at creation of pool
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint256 upperPriceX64 = _distanceE6ToPriceX64(int24(distUpperE6), midPriceX64, Math.Rounding.Floor);
     uint256 marginalPriceX64 =
       SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, curPosInBin, Math.Rounding.Floor).toUint128();
 
@@ -123,6 +134,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     uint256 midPriceX64 = Math.sqrt(uint256(env.oracleBidX64) * uint256(env.oracleAskX64));
 
     int8 highCap = _highBinCap(env.imm.highestBin, env.curBinIdx, maxBinsPerSide);
+    // forge-lint: disable-next-line(unsafe-typecast)
     uint256 askCount = env.curBinIdx <= highCap ? uint256(int256(highCap) - int256(env.curBinIdx) + 1) : 0;
     depth.asks = new IMetricOmmPoolSwapDataProvider.DepthLevel[](askCount);
     _fillAsks(
@@ -139,6 +151,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     );
 
     int8 lowCap = _lowBinCap(env.imm.lowestBin, env.curBinIdx, maxBinsPerSide);
+    // forge-lint: disable-next-line(unsafe-typecast)
     uint256 bidCount = env.curBinIdx >= lowCap ? uint256(int256(env.curBinIdx) - int256(lowCap) + 1) : 0;
     depth.bids = new IMetricOmmPoolSwapDataProvider.DepthLevel[](bidCount);
     _fillBids(
@@ -180,14 +193,18 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
   }
 
   function _highBinCap(int8 highestBin, int8 curBinIdx, uint8 maxBinsPerSide) internal pure returns (int8 highCap) {
+    // forge-lint: disable-next-line(unsafe-typecast)
     int256 hi = int256(curBinIdx) + int256(uint256(maxBinsPerSide));
     if (hi > int256(highestBin)) hi = int256(highestBin);
+    // forge-lint: disable-next-line(unsafe-typecast)
     highCap = int8(hi);
   }
 
   function _lowBinCap(int8 lowestBin, int8 curBinIdx, uint8 maxBinsPerSide) internal pure returns (int8 lowCap) {
+    // forge-lint: disable-next-line(unsafe-typecast)
     int256 lo = int256(curBinIdx) - int256(uint256(maxBinsPerSide));
     if (lo < int256(lowestBin)) lo = int256(lowestBin);
+    // forge-lint: disable-next-line(unsafe-typecast)
     lowCap = int8(lo);
   }
 
@@ -199,9 +216,12 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     returns (uint256)
   {
     if (distanceValueE6 >= 0) {
-      return Math.mulDiv(midPriceX64, ONE_E6 + uint256(uint24(distanceValueE6)), ONE_E6, rounding);
+      // forge-lint: disable-next-line(unsafe-typecast)
+      return Math.mulDiv(midPriceX64, ONE_E6 + uint256(int256(distanceValueE6)), ONE_E6, rounding);
     }
-    uint256 absNegativeDistanceE6 = uint256(uint24(-distanceValueE6));
+
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint256 absNegativeDistanceE6 = uint256(-int256(distanceValueE6));
     if (absNegativeDistanceE6 > ONE_E6) revert InvalidDistance();
     return Math.mulDiv(midPriceX64, ONE_E6 - absNegativeDistanceE6, ONE_E6, rounding);
   }
@@ -214,9 +234,11 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     returns (uint256)
   {
     if (distE6 >= 0) {
+      // forge-lint: disable-next-line(unsafe-typecast)
       uint256 distAbs = uint256(distE6);
       return Math.mulDiv(midPriceX64, ONE_E6 + distAbs, ONE_E6, rounding);
     }
+    // forge-lint: disable-next-line(unsafe-typecast)
     uint256 distNegAbs = uint256(-distE6);
     if (distNegAbs > ONE_E6) revert InvalidDistance();
     return Math.mulDiv(midPriceX64, ONE_E6 - distNegAbs, ONE_E6, rounding);
@@ -250,7 +272,10 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
       midPriceX64 = Math.sqrt(uint256(bidFromOracleX64) * uint256(askFromOracleX64));
       lowerPriceX64 = _priceFromMidAndDistE6(midPriceX64, int256(curBinDistFromProvidedPriceE6), Math.Rounding.Floor);
       upperPriceX64 = _priceFromMidAndDistE6(
-        midPriceX64, int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6)), Math.Rounding.Floor
+        midPriceX64,
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6)),
+        Math.Rounding.Floor
       );
       marginalPriceX64 =
         SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, uint256(curPosInBin), Math.Rounding.Floor);
@@ -338,50 +363,71 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     int8 highCap,
     IMetricOmmPoolSwapDataProvider.DepthLevel[] memory asks
   ) internal view {
-    int256 cumDistE6 = int256(curBinDistFromProvidedPriceE6);
-    uint256 cumAmt;
-    uint256 cumWeighted;
-
-    uint256 out;
+    AskFillCtx memory ctx;
+    ctx.cumDistE6 = int256(curBinDistFromProvidedPriceE6);
     for (int256 b = int256(curBinIdx); b <= int256(highCap); b++) {
-      int8 binIdx = int8(b);
-      (uint104 t0,, uint16 lengthE6, uint16 addFeeBuyE6,) = PoolStateLibrary._binState(pool, binIdx);
-      uint256 buySpreadE6 = baseSpreadE6 + uint256(addFeeBuyE6);
-
-      uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, cumDistE6, Math.Rounding.Floor);
-      uint256 upperX64 = _priceFromMidAndDistE6(midPriceX64, cumDistE6 + int256(uint256(lengthE6)), Math.Rounding.Floor);
-
-      uint256 amountScaled;
-      uint256 mStartX64;
-      uint256 mEndX64;
-
-      if (binIdx == curBinIdx) {
-        amountScaled = Math.mulDiv(uint256(t0), MAX_POS_U104 - uint256(curPosInBin), MAX_POS_U104, Math.Rounding.Floor);
-        mStartX64 = SwapMath.calculatePriceAtBinPosition(lowerX64, upperX64, uint256(curPosInBin), Math.Rounding.Floor);
-        mEndX64 = upperX64;
-      } else {
-        amountScaled = uint256(t0);
-        mStartX64 = lowerX64;
-        mEndX64 = upperX64;
+      _fillAskRow(
+        pool, token0ScaleMultiplier, midPriceX64, baseSpreadE6, notionalFeeE8, curBinIdx, curPosInBin, asks, ctx, b
+      );
+      unchecked {
+        ++ctx.out;
       }
-
-      uint256 amountExternal = _toExternal(amountScaled, token0ScaleMultiplier);
-
-      (uint256 binAvg, uint256 newCumAmt, uint256 newCumWeighted) =
-        _accumulateAskLevel(buySpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumAmt, cumWeighted);
-
-      asks[out++] = IMetricOmmPoolSwapDataProvider.DepthLevel({
-        binIdx: binIdx,
-        amountInBin: amountExternal,
-        amountCumulative: newCumAmt,
-        binAvgExecPriceX64: binAvg,
-        cumulativeAvgExecPriceX64: newCumAmt == 0 ? 0 : newCumWeighted / newCumAmt
-      });
-
-      cumAmt = newCumAmt;
-      cumWeighted = newCumWeighted;
-      cumDistE6 += int256(uint256(lengthE6));
     }
+  }
+
+  function _fillAskRow(
+    address pool,
+    uint256 token0ScaleMultiplier,
+    uint256 midPriceX64,
+    uint256 baseSpreadE6,
+    uint256 notionalFeeE8,
+    int8 curBinIdx,
+    uint104 curPosInBin,
+    IMetricOmmPoolSwapDataProvider.DepthLevel[] memory asks,
+    AskFillCtx memory ctx,
+    int256 b
+  ) private view {
+    // forge-lint: disable-next-line(unsafe-typecast)
+    int8 binIdx = int8(b);
+    (uint104 t0,, uint16 lengthE6, uint16 addFeeBuyE6,) = PoolStateLibrary._binState(pool, binIdx);
+    uint256 buySpreadE6 = baseSpreadE6 + uint256(addFeeBuyE6);
+
+    uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, ctx.cumDistE6, Math.Rounding.Floor);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint256 upperX64 =
+      _priceFromMidAndDistE6(midPriceX64, ctx.cumDistE6 + int256(uint256(lengthE6)), Math.Rounding.Floor);
+
+    uint256 amountScaled;
+    uint256 mStartX64;
+    uint256 mEndX64;
+
+    if (binIdx == curBinIdx) {
+      amountScaled = Math.mulDiv(uint256(t0), MAX_POS_U104 - uint256(curPosInBin), MAX_POS_U104, Math.Rounding.Floor);
+      mStartX64 = SwapMath.calculatePriceAtBinPosition(lowerX64, upperX64, uint256(curPosInBin), Math.Rounding.Floor);
+      mEndX64 = upperX64;
+    } else {
+      amountScaled = uint256(t0);
+      mStartX64 = lowerX64;
+      mEndX64 = upperX64;
+    }
+
+    uint256 amountExternal = _toExternal(amountScaled, token0ScaleMultiplier);
+
+    uint256 binAvg;
+    (binAvg, ctx.cumAmt, ctx.cumWeighted) =
+      _accumulateAskLevel(buySpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, ctx.cumAmt, ctx.cumWeighted);
+
+    uint256 cumVwapX64 = ctx.cumAmt == 0 ? 0 : ctx.cumWeighted / ctx.cumAmt;
+    asks[ctx.out] = IMetricOmmPoolSwapDataProvider.DepthLevel({
+      binIdx: binIdx,
+      amountInBin: amountExternal,
+      amountCumulative: ctx.cumAmt,
+      binAvgExecPriceX64: binAvg,
+      cumulativeAvgExecPriceX64: cumVwapX64
+    });
+
+    // forge-lint: disable-next-line(unsafe-typecast)
+    ctx.cumDistE6 += int256(uint256(lengthE6));
   }
 
   function _fillBids(
@@ -407,6 +453,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
       uint256 sellSpreadE6 = baseSpreadE6 + uint256(addFeeSellE6);
 
       uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, walkDistE6, Math.Rounding.Floor);
+      // forge-lint: disable-next-line(unsafe-typecast)
       uint256 upperX64 =
         _priceFromMidAndDistE6(midPriceX64, walkDistE6 + int256(uint256(lengthE6)), Math.Rounding.Floor);
 
@@ -433,14 +480,18 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     }
 
     for (int256 b = int256(curBinIdx) - 1; b >= int256(lowCap); b--) {
+      // forge-lint: disable-next-line(unsafe-typecast)
       int8 binIdx = int8(b);
+      // forge-lint: disable-next-line(unsafe-typecast)
       (,, uint16 lenAbove,,) = PoolStateLibrary._binState(pool, int8(b + 1));
+      // forge-lint: disable-next-line(unsafe-typecast)
       walkDistE6 -= int256(uint256(lenAbove));
 
       (, uint104 t1, uint16 lengthE6,, uint16 addFeeSellE6) = PoolStateLibrary._binState(pool, binIdx);
       uint256 sellSpreadE6 = baseSpreadE6 + uint256(addFeeSellE6);
 
       uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, walkDistE6, Math.Rounding.Floor);
+      // forge-lint: disable-next-line(unsafe-typecast)
       uint256 upperX64 =
         _priceFromMidAndDistE6(midPriceX64, walkDistE6 + int256(uint256(lengthE6)), Math.Rounding.Floor);
 
