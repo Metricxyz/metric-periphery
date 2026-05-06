@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
+// forge-lint: disable-start(unsafe-typecast)
 
 import {Test} from "forge-std/Test.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
@@ -94,7 +94,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
     oracle = new MockPriceProviderLPH();
     oracle.setTokens(address(weth), address(token1));
-    oracle.setBidAndAskPrice(SafeCast.toUint128(Q64), SafeCast.toUint128(Q64));
+    oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64));
 
     (uint256[] memory nnPacked, uint256[] memory negPacked) = _binPackedArrays();
     (BinState[] memory nnStates, BinState[] memory negStates) = _unpackBinStates(nnPacked, negPacked);

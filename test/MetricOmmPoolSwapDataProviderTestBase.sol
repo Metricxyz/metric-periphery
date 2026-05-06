@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
+// forge-lint: disable-start(unsafe-typecast)
 
 import {Test} from "forge-std/Test.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -114,7 +114,7 @@ contract LiquiditySeederForSwapData is IMetricOmmModifyLiquidityCallback {
 }
 
 /// @notice Shared pool deploy, oracle mock, and swap helpers for swap-data and depth integration tests.
-abstract contract SwapDataHelperTestBase is Test, PoolInitPreprocessor {
+abstract contract MetricOmmPoolSwapDataProviderTestBase is Test, PoolInitPreprocessor {
   uint256 internal constant Q64 = 2 ** 64;
   uint256 internal constant ONE_E6 = 1e6;
   uint256 internal constant ONE_E8 = 1e8;
@@ -272,7 +272,7 @@ abstract contract SwapDataHelperTestBase is Test, PoolInitPreprocessor {
   }
 
   function _toX64(uint256 e6Ratio) internal pure returns (uint128) {
-    return SafeCast.toUint128(Math.mulDiv(Q64, e6Ratio, ONE_E6));
+    return uint128(Math.mulDiv(Q64, e6Ratio, ONE_E6));
   }
 
   function _smallTradeAmount(uint8 decimals) internal pure returns (uint256) {
@@ -300,8 +300,8 @@ abstract contract SwapDataHelperTestBase is Test, PoolInitPreprocessor {
     uint256 notionalFeeE8 = uint256(protocolNotionalFeeE8) + uint256(adminNotionalFeeE8);
 
     uint256 lowerPriceX64 = _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6, midPriceX64, Math.Rounding.Floor);
-    uint256 upperPriceX64 =
-      _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6 + int24(uint24(lengthE6)), midPriceX64, Math.Rounding.Floor);
+    int256 distUpperE6 = int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6));
+    uint256 upperPriceX64 = _distanceE6ToPriceX64(int24(distUpperE6), midPriceX64, Math.Rounding.Floor);
     uint256 marginalPriceX64 =
       SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, curPosInBin, Math.Rounding.Floor);
     uint256 buySpreadFeeE6 = uint256(protocolSpreadFeeE6) + uint256(adminSpreadFeeE6) + uint256(addFeeBuyE6);
@@ -319,9 +319,10 @@ abstract contract SwapDataHelperTestBase is Test, PoolInitPreprocessor {
     returns (uint256)
   {
     if (distanceValueE6 >= 0) {
-      return Math.mulDiv(midPriceX64, ONE_E6 + uint256(uint24(distanceValueE6)), ONE_E6, rounding);
+      return Math.mulDiv(midPriceX64, ONE_E6 + uint256(int256(distanceValueE6)), ONE_E6, rounding);
     }
-    return Math.mulDiv(midPriceX64, ONE_E6 - uint256(uint24(-distanceValueE6)), ONE_E6, rounding);
+    uint256 absNeg = uint256(-int256(distanceValueE6));
+    return Math.mulDiv(midPriceX64, ONE_E6 - absNeg, ONE_E6, rounding);
   }
 
   function _binPackedArrays(uint16 lengthE6, uint16 addFeeBuyE6, uint16 addFeeSellE6)

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
+// forge-lint: disable-start(unsafe-typecast)
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
@@ -149,11 +149,11 @@ contract LiquidityHelper is IMetricOmmModifyLiquidityCallback {
   {
     int256 span = upperBin - lowerBin + 1;
     require(span > 0, "bad range");
-    uint256 n = SafeCast.toUint256(span);
+    uint256 n = uint256(span);
     int256[] memory binIdxs = new int256[](n);
     uint256[] memory shares = new uint256[](n);
     for (uint256 i; i < n; i++) {
-      binIdxs[i] = lowerBin + SafeCast.toInt256(i);
+      binIdxs[i] = lowerBin + int256(i);
       shares[i] = sharesPerBin;
     }
     LiquidityDelta memory deltas = LiquidityDelta({binIdxs: binIdxs, shares: shares});
@@ -205,7 +205,7 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
 
     oracle = new MockPriceProviderForRouter();
     oracle.setTokens(address(weth), address(token1));
-    oracle.setBidAndAskPrice(SafeCast.toUint128(Q64), SafeCast.toUint128(Q64));
+    oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64));
 
     (uint256[] memory nnPacked, uint256[] memory negPacked) = _binPackedArrays();
     (BinState[] memory nnStates, BinState[] memory negStates) = _unpackBinStates(nnPacked, negPacked);
@@ -479,11 +479,8 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
     bool exactInput
   ) public {
     uint128 amount = uint128(bound(uint256(rawAmount), 1, 1_000_000));
-    int128 amountSpecified = exactInput
-      // forge-lint: disable-next-line(unsafe-typecast)
-      ? int128(amount)
-      // forge-lint: disable-next-line(unsafe-typecast)
-      : -int128(amount);
+    int128 signedMag = int128(int256(uint256(amount)));
+    int128 amountSpecified = exactInput ? signedMag : -signedMag;
     uint128 priceLimitX64 = zeroForOne ? 0 : type(uint128).max;
 
     (int128 q0, int128 q1) =

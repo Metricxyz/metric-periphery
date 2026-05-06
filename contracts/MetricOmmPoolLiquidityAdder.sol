@@ -274,6 +274,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
 
   function _tloadAddress(uint256 slot) internal view returns (address value) {
     uint256 raw = _tload(slot);
+    // forge-lint: disable-next-line(unsafe-typecast)
     value = address(uint160(raw));
   }
 

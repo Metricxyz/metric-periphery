@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
-
+// forge-lint: disable-start(unsafe-typecast)
 /// forge-config: default.fuzz.runs = 32
 
 import {MockERC20} from "@metric-core/mocks/MockERC20.sol";
@@ -9,14 +9,18 @@ import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
 import {MetricOmmPoolSwapDataProvider} from "../contracts/MetricOmmPoolSwapDataProvider.sol";
 import {IMetricOmmPoolSwapDataProvider} from "../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
-import {LiquiditySeederForSwapData, MockPriceProviderSDH, SwapDataHelperTestBase} from "./SwapDataHelperTestBase.sol";
+import {
+  LiquiditySeederForSwapData,
+  MockPriceProviderSDH,
+  MetricOmmPoolSwapDataProviderTestBase
+} from "./MetricOmmPoolSwapDataProviderTestBase.sol";
 
 /// @title MetricOmmPoolSwapDataProvider liquidity depth integration tests
 /// @notice Same P1/P2/A1/A2/A3 scenario at four `getLiquidityDepth` window sizes to compare gas (eth_call cost scales with ladder length).
 /// @dev **P1** Full-range pool (`fullBinRange = true`, 256 bins with liquidity). **P2** One `_randomWalkSwaps` step per fuzz case. **A1** `getLiquidityDepth(pool, maxBinsPerSide)`.
 ///      **A2-A3** Cheap cumulative checks: first valid ladder rows (smallest cumulatives, bounded count) plus one largest feasible cumulative per side vs `simulateSwapAndRevert`, then reference bid/ask vs the same provider.
 ///      Four tests fix `maxBinsPerSide` to 4, 16, 64, and 255.
-contract MetricOmmPoolSwapDataProviderDepthTest is SwapDataHelperTestBase {
+contract MetricOmmPoolSwapDataProviderDepthTest is MetricOmmPoolSwapDataProviderTestBase {
   uint256 internal constant DEEP_SHARES = SHARES_PER_BIN / 5_000;
   /// @dev Max number of earliest ladder rows (smallest cumulatives) to cross-check via simulate per side.
   uint256 internal constant MAX_LOWEST_ROW_SIM_CHECKS = 8;
@@ -132,9 +136,10 @@ contract MetricOmmPoolSwapDataProviderDepthTest is SwapDataHelperTestBase {
     uint128 priceLimitX64,
     uint256 cum
   ) internal {
-    (bool ok, int256 a0c, int256 a1c) = _trySimulateSwapDeltas(
-      poolAddr, zeroForOne, -int128(uint128(cum)), bidOracle, askOracle, priceLimitX64
-    );
+    uint128 cumU128 = uint128(cum);
+    int128 amountSpecified = -int128(int256(uint256(cumU128)));
+    (bool ok, int256 a0c, int256 a1c) =
+      _trySimulateSwapDeltas(poolAddr, zeroForOne, amountSpecified, bidOracle, askOracle, priceLimitX64);
     assertTrue(ok, "simulate did not return SimulateSwap payload");
 
     if (zeroForOne) {

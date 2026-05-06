@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
+// forge-lint: disable-start(unsafe-typecast)
 
 /// forge-config: default.fuzz.runs = 128
 
@@ -9,9 +10,9 @@ import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
 import {IMetricOmmPoolSwapDataProvider} from "../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
 import {MetricOmmPoolSwapDataProvider} from "../contracts/MetricOmmPoolSwapDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
-import {MockPriceProviderSDH, SwapDataHelperTestBase} from "./SwapDataHelperTestBase.sol";
+import {MockPriceProviderSDH, MetricOmmPoolSwapDataProviderTestBase} from "./MetricOmmPoolSwapDataProviderTestBase.sol";
 
-contract SwapDataHelperTest is SwapDataHelperTestBase {
+contract MetricOmmPoolSwapDataProviderTest is MetricOmmPoolSwapDataProviderTestBase {
   function setUp() public {}
 
   function test_constructorRevertsOnZeroFactory() public {
