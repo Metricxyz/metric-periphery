@@ -52,6 +52,12 @@ interface IMetricOmmPoolSwapDataProvider is IMetricOmmPoolQuoter {
   /// @notice Returns fee-adjusted best executable bid/ask prices in Q64.64.
   function getBestBidAndAsk(address pool) external view returns (uint128 bestBidX64, uint128 bestAskX64);
 
+  /// @notice Returns current distance from provided/mid price in signed X64 percentage units.
+  function distanceFromProvidedPriceX64(address pool) external view returns (int256 distanceX64);
+
+  /// @notice Returns current in-bin marginal price in X64 format.
+  function currentPriceX64(address pool) external view returns (uint256 currentPriceX64Value);
+
   /// @notice Computes read-only bid and ask depth ladders from the pool's current bin outward.
   function getLiquidityDepth(address pool, uint8 maxBinsPerSide) external view returns (LiquidityDepth memory depth);
 }
