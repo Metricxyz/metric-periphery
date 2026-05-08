@@ -1,0 +1,14 @@
+{
+  "lib/forge-std": {
+    "rev": "87f3448138b6ee16e33055116b150d37a8cf912f"
+  },
+  "lib/metric-core": {
+    "rev": "39dfc21a3fbefaeab3fd7ffbc8d72023af4e1eec"
+  },
+  "lib/openzeppelin-contracts": {
+    "rev": "8b010f923a0f81599a3f8bab309a47ec99c62764"
+  },
+  "lib/sstore2": {
+    "rev": "0a28fe61b6e81de9a05b462a24b9f4ba8c70d5b7"
+  }
+}

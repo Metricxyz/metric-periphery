@@ -103,6 +103,49 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     bestBidX64 = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor).toUint128();
   }
 
+  /// @inheritdoc IMetricOmmPoolSwapDataProvider
+  function distanceFromProvidedPriceX64(address pool) external view override returns (int256 distanceX64) {
+    (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
+    (,, uint16 lengthE6,,) = PoolStateLibrary._binState(pool, curBinIdx);
+
+    int256 baseDistE6 = int256(curBinDistFromProvidedPriceE6);
+    int256 baseDistAbsE6 = baseDistE6 >= 0 ? baseDistE6 : -baseDistE6;
+    // casting to `uint256` is safe because `baseDistAbsE6` is made non-negative above
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint256 baseDistAbsX64 = Math.mulDiv(uint256(baseDistAbsE6), Q64, ONE_E6, Math.Rounding.Floor);
+    // casting to `int256` is safe because `baseDistAbsX64` is derived from bounded E6 distance and scales linearly
+    // forge-lint: disable-next-line(unsafe-typecast)
+    int256 signedBaseDistX64 = baseDistE6 >= 0 ? int256(baseDistAbsX64) : -int256(baseDistAbsX64);
+
+    uint256 inBinDistNumerator = uint256(lengthE6) * uint256(curPosInBin);
+    uint256 inBinDistX64 = Math.mulDiv(inBinDistNumerator, Q64, ONE_E6 * MAX_POS_U104, Math.Rounding.Floor);
+
+    // casting to `int256` is safe because `inBinDistX64` is non-negative and bounded by one-bin distance in X64
+    // forge-lint: disable-next-line(unsafe-typecast)
+    distanceX64 = signedBaseDistX64 + int256(inBinDistX64);
+  }
+
+  /// @inheritdoc IMetricOmmPoolSwapDataProvider
+  function currentPriceX64(address pool) external view override returns (uint256 currentPriceX64Value) {
+    address provider = _resolvePriceProvider(pool);
+    (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
+    if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
+
+    (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
+    (,, uint16 lengthE6,,) = PoolStateLibrary._binState(pool, curBinIdx);
+
+    uint256 midPriceX64 = Math.sqrt(uint256(bidFromOracleX64) * uint256(askFromOracleX64));
+    uint256 lowerPriceX64 =
+      _priceFromMidAndDistE6(midPriceX64, int256(curBinDistFromProvidedPriceE6), Math.Rounding.Floor);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    uint256 upperPriceX64 = _priceFromMidAndDistE6(
+      midPriceX64, int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6)), Math.Rounding.Floor
+    );
+
+    currentPriceX64Value =
+      SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, uint256(curPosInBin), Math.Rounding.Floor);
+  }
+
   // ---- Per-bin depth ladders ----
 
   /// @inheritdoc IMetricOmmPoolSwapDataProvider
