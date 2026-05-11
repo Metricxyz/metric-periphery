@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 // forge-lint: disable-start(unsafe-typecast)
 /// forge-config: default.fuzz.runs = 32
 
-import {MockERC20} from "@metric-core/mocks/MockERC20.sol";
+import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
 import {MetricOmmPoolSwapDataProvider} from "../contracts/MetricOmmPoolSwapDataProvider.sol";

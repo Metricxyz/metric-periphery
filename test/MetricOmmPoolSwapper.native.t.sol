@@ -15,11 +15,11 @@ import {
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
-import {MockERC20} from "@metric-core/mocks/MockERC20.sol";
+import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
 import {IMetricOmmPoolSwapper} from "../contracts/interfaces/IMetricOmmPoolSwapper.sol";
-import {MockWETH9} from "../contracts/mocks/MockWETH9.sol";
+import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 
 uint256 constant Q64 = 2 ** 64;

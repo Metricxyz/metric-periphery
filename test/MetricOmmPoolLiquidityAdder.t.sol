@@ -8,10 +8,10 @@ import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvi
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
-import {MockERC20} from "@metric-core/mocks/MockERC20.sol";
+import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MetricOmmPoolStateView} from "../lib/metric-core/test/MetricOmmPoolStateView.sol";
-import {MockWETH9} from "../contracts/mocks/MockWETH9.sol";
+import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {MetricOmmPoolLiquidityAdder} from "../contracts/MetricOmmPoolLiquidityAdder.sol";
 import {IMetricOmmPoolLiquidityAdder} from "../contracts/interfaces/IMetricOmmPoolLiquidityAdder.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
