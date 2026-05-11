@@ -1,3 +1,4 @@
 @metric-core/=lib/metric-core/contracts/
+@metric-core-test/=lib/metric-core/test/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 forge-std/=lib/forge-std/src/

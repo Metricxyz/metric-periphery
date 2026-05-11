@@ -96,10 +96,9 @@ contracts/
 ├── interfaces/          # IMetricOmmPoolSwapper, IMetricOmmPoolQuoter, IMetricOmmPoolSwapDataProvider, IMetricOmmPoolLiquidityAdder, IWETH9
 ├── common/
 │   └── MetricOmmPoolQuoter.sol       # Shared quoter; inherited by swapper and swap data provider
-└── mocks/
-    └── MockWETH9.sol
 
 test/                    # Foundry tests (*.t.sol) and shared helpers (RouterTestFactory, SwapDataHelperTestBase, …)
+test/mocks/              # MockWETH9 and other test-only doubles
 ```
 
 ## License

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IWETH9} from "../interfaces/IWETH9.sol";
+import {IWETH9} from "../../contracts/interfaces/IWETH9.sol";
 
 /// @title MockWETH9
 /// @notice Minimal WETH9-like ERC20 for tests.
