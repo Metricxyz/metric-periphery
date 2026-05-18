@@ -1,9 +1,9 @@
 {
   "lib/forge-std": {
-    "rev": "87f3448138b6ee16e33055116b150d37a8cf912f"
+    "rev": "b090968353a209833d4a6f1383230477e96d8438"
   },
   "lib/metric-core": {
-    "rev": "3e3b43bd733f99314633db31488edeff27aa6a6c"
+    "rev": "1e450c7c30085606edf462eac8af80816153d443"
   },
   "lib/openzeppelin-contracts": {
     "rev": "cd05883078060e0cd8a7bd36636944570dbe1722"
