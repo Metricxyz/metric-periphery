@@ -3,12 +3,9 @@
     "rev": "87f3448138b6ee16e33055116b150d37a8cf912f"
   },
   "lib/metric-core": {
-    "rev": "39dfc21a3fbefaeab3fd7ffbc8d72023af4e1eec"
+    "rev": "3e3b43bd733f99314633db31488edeff27aa6a6c"
   },
   "lib/openzeppelin-contracts": {
-    "rev": "8b010f923a0f81599a3f8bab309a47ec99c62764"
-  },
-  "lib/sstore2": {
-    "rev": "0a28fe61b6e81de9a05b462a24b9f4ba8c70d5b7"
+    "rev": "cd05883078060e0cd8a7bd36636944570dbe1722"
   }
 }
