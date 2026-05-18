@@ -6,21 +6,20 @@ pragma solidity ^0.8.35;
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
-import {MetricOmmPoolSwapDataProvider} from "../contracts/lens/MetricOmmPoolSwapDataProvider.sol";
-import {IMetricOmmPoolSwapDataProvider} from "../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 import {
   LiquiditySeederForSwapData,
   MockPriceProviderSDH,
-  MetricOmmPoolSwapDataProviderTestBase
-} from "./MetricOmmPoolSwapDataProviderTestBase.sol";
+  MetricOmmPoolDataProviderTestBase
+} from "./MetricOmmPoolDataProviderTestBase.sol";
 
-/// @title MetricOmmPoolSwapDataProvider liquidity depth integration tests
+/// @title MetricOmmPoolDataProvider liquidity depth integration tests
 /// @notice Same P1/P2/A1/A2/A3 scenario at four `getLiquidityDepth` window sizes to compare gas (eth_call cost scales with ladder length).
 /// @dev **P1** Full-range pool (`fullBinRange = true`, 256 bins with liquidity). **P2** One `_randomWalkSwaps` step per fuzz case. **A1** `getLiquidityDepth(pool, maxBinsPerSide)`.
 ///      **A2-A3** Cheap cumulative checks: first valid ladder rows (smallest cumulatives, bounded count) plus one largest feasible cumulative per side vs `simulateSwapAndRevert`, then reference bid/ask vs the same provider.
 ///      Four tests fix `maxBinsPerSide` to 4, 16, 64, and 255.
-contract MetricOmmPoolSwapDataProviderDepthTest is MetricOmmPoolSwapDataProviderTestBase {
+contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase {
   uint256 internal constant DEEP_SHARES = SHARES_PER_BIN / 5_000;
   /// @dev Max number of earliest ladder rows (smallest cumulatives) to cross-check via simulate per side.
   uint256 internal constant MAX_LOWEST_ROW_SIM_CHECKS = 8;
@@ -29,7 +28,7 @@ contract MetricOmmPoolSwapDataProviderDepthTest is MetricOmmPoolSwapDataProvider
   MockPriceProviderSDH internal oracle;
   MockERC20 internal token0;
   MockERC20 internal token1;
-  MetricOmmPoolSwapDataProvider internal helper;
+  MetricOmmPoolDataProvider internal helper;
   MetricOmmPoolSwapper internal router;
   RouterTestFactory internal factory;
   LiquiditySeederForSwapData internal seeder;
@@ -59,7 +58,7 @@ contract MetricOmmPoolSwapDataProviderDepthTest is MetricOmmPoolSwapDataProvider
     _randomWalkSwaps(router, address(pool), 18, 18, seed, 1);
 
     (uint128 bidOracle, uint128 askOracle) = oracle.getBidAndAskPrice();
-    IMetricOmmPoolSwapDataProvider.LiquidityDepth memory depth = helper.getLiquidityDepth(address(pool), maxBinsPerSide);
+    MetricOmmPoolDataProvider.LiquidityDepth memory depth = helper.getLiquidityDepth(address(pool), maxBinsPerSide);
 
     uint256 runningAsk;
     uint256 runningBid;
@@ -95,7 +94,7 @@ contract MetricOmmPoolSwapDataProviderDepthTest is MetricOmmPoolSwapDataProvider
     address poolAddr,
     uint128 bidOracle,
     uint128 askOracle,
-    IMetricOmmPoolSwapDataProvider.DepthLevel[] memory levels,
+    MetricOmmPoolDataProvider.DepthLevel[] memory levels,
     bool zeroForOne,
     uint128 priceLimitX64,
     uint256 maxLowestRowsToCheck

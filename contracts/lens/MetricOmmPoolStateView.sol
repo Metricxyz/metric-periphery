@@ -4,7 +4,6 @@ pragma solidity ^0.8.35;
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
-import {StateViewBinBatch} from "./StateViewBinBatch.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title MetricOmmPoolStateView

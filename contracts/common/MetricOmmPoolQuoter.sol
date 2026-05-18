@@ -3,13 +3,15 @@ pragma solidity ^0.8.35;
 
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmPoolQuoter} from "../interfaces/IMetricOmmPoolQuoter.sol";
 
 /// @title MetricOmmPoolQuoter
 /// @notice Revert-decoding quote adapter over `simulateSwapAndRevert`.
-/// @dev Shared by `MetricOmmPoolSwapper` and `MetricOmmPoolSwapDataProvider`.
-contract MetricOmmPoolQuoter is IMetricOmmPoolQuoter {
-  /// @inheritdoc IMetricOmmPoolQuoter
+/// @dev Shared by `MetricOmmPoolSwapper` and `MetricOmmPoolDataProvider`.
+contract MetricOmmPoolQuoter {
+  /// @notice Wrapped downstream revert from quote simulation path.
+  error WrappedError(address target, bytes4 selector, bytes reason, bytes additionalInfo);
+
+  /// @notice Simulate swap and return pool deltas without state changes.
   function quoteSwap(
     address pool,
     bool zeroForOne,
@@ -17,7 +19,7 @@ contract MetricOmmPoolQuoter is IMetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64
-  ) public virtual override returns (int128 amount0Delta, int128 amount1Delta) {
+  ) public virtual returns (int128 amount0Delta, int128 amount1Delta) {
     try IMetricOmmPool(pool)
       .simulateSwapAndRevert(zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64) {
       revert("SimulateSwapAndRevert did not revert");

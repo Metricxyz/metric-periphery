@@ -25,7 +25,7 @@ import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
 import {IMetricOmmPoolSwapper} from "../contracts/interfaces/IMetricOmmPoolSwapper.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
-import {MetricOmmPoolSwapDataProvider} from "../contracts/lens/MetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 
 contract MockPriceProviderSDH is IPriceProvider {
   uint128 public bidPrice;
@@ -114,7 +114,7 @@ contract LiquiditySeederForSwapData is IMetricOmmModifyLiquidityCallback {
 }
 
 /// @notice Shared pool deploy, oracle mock, and swap helpers for swap-data and depth integration tests.
-abstract contract MetricOmmPoolSwapDataProviderTestBase is Test, PoolInitPreprocessor {
+abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocessor {
   uint256 internal constant Q64 = 2 ** 64;
   uint256 internal constant ONE_E6 = 1e6;
   uint256 internal constant ONE_E8 = 1e8;
@@ -146,7 +146,7 @@ abstract contract MetricOmmPoolSwapDataProviderTestBase is Test, PoolInitPreproc
       MockPriceProviderSDH oracle,
       MockERC20 token0,
       MockERC20 token1,
-      MetricOmmPoolSwapDataProvider helper,
+      MetricOmmPoolDataProvider helper,
       MetricOmmPoolSwapper router,
       RouterTestFactory factoryStub,
       LiquiditySeederForSwapData seeder
@@ -216,7 +216,7 @@ abstract contract MetricOmmPoolSwapDataProviderTestBase is Test, PoolInitPreproc
       address(this)
     );
 
-    helper = new MetricOmmPoolSwapDataProvider(address(factoryStub));
+    helper = new MetricOmmPoolDataProvider(address(factoryStub));
     router = new MetricOmmPoolSwapper(address(new MockWETH9()), address(factoryStub));
     seeder = new LiquiditySeederForSwapData(address(factoryStub));
 
