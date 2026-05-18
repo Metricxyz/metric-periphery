@@ -6,7 +6,7 @@ pragma solidity ^0.8.35;
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
-import {MetricOmmPoolSwapDataProvider} from "../contracts/MetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolSwapDataProvider} from "../contracts/lens/MetricOmmPoolSwapDataProvider.sol";
 import {IMetricOmmPoolSwapDataProvider} from "../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 import {

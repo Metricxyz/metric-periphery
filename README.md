@@ -84,7 +84,13 @@ forge fmt
 
 CI runs Prettier check, `forge fmt --check`, build, and tests (see `.github/workflows/test.yml`). Workflows pin **Foundry 1.7.0** and **`solc` 0.8.35** — match locally (`forge --version`, same `foundry.toml` `solc`).
 
-Optional local pre-commit checks live in `.githooks/` (same pattern as **metric-core**): enable with `git config --local core.hooksPath .githooks`. The hook runs `npm run format:prettier:check`, `forge fmt --check`, and `forge test` (run `npm install` once). Use `git commit --no-verify` to skip.
+Running **`npm install`** sets **`git config --local core.hooksPath`** to this repo’s `.githooks` (absolute path, worktree-safe). Verify:
+
+```bash
+git config --local --get core.hooksPath
+```
+
+The pre-commit hook runs **`npm run format:prettier:check`**, **`forge fmt --check`**, **`forge build`**, and **`forge test`**. Foundry must be on `PATH`. Skip with **`git commit --no-verify`**.
 
 ## Project structure
 

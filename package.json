@@ -9,7 +9,11 @@
   "license": "UNLICENSED",
   "scripts": {
     "format:prettier": "prettier --write . --ignore-path .prettierignore",
-    "format:prettier:check": "prettier --check . --ignore-path .prettierignore"
+    "format:prettier:check": "prettier --check . --ignore-path .prettierignore",
+    "format:forge": "forge fmt",
+    "format:forge:check": "forge fmt --check",
+    "format:check": "npm run format:prettier:check && npm run format:forge:check",
+    "prepare": "node scripts/enable-git-hooks.cjs"
   },
   "devDependencies": {
     "prettier": "^3.0.0"

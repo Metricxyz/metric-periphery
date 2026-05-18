@@ -25,7 +25,7 @@ import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
 import {IMetricOmmPoolSwapper} from "../contracts/interfaces/IMetricOmmPoolSwapper.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
-import {MetricOmmPoolSwapDataProvider} from "../contracts/MetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolSwapDataProvider} from "../contracts/lens/MetricOmmPoolSwapDataProvider.sol";
 
 contract MockPriceProviderSDH is IPriceProvider {
   uint128 public bidPrice;

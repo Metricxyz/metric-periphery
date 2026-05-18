@@ -8,13 +8,14 @@ import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvi
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
 import {PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
-import {IMetricOmmPoolSwapDataProvider} from "./interfaces/IMetricOmmPoolSwapDataProvider.sol";
-import {MetricOmmPoolQuoter} from "./common/MetricOmmPoolQuoter.sol";
+import {IMetricOmmPoolSwapDataProvider} from "../interfaces/IMetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolQuoter} from "../common/MetricOmmPoolQuoter.sol";
+import {MetricOmmPoolStateView} from "./MetricOmmPoolStateView.sol";
 
 /// @title MetricOmmPoolSwapDataProvider
 /// @notice Read-only swap data for MetricOMM pools: fee-adjusted bid/ask, per-bin depth ladders, and revert-based quotes.
 /// @dev Combines former `SwapDataHelper`, `LiquidityDepthHelper`, and `MetricOmmPoolQuoter`. Layout: constants and immutables, constructor, external views (`getBestBidAndAsk`, `getLiquidityDepth`), then internals grouped as factory/oracle context, bid/ask marginal path, depth reference prices, ladder assembly, fee-adjusted accumulation, and pure geometry/scale helpers.
-contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, MetricOmmPoolQuoter {
+contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, MetricOmmPoolQuoter, MetricOmmPoolStateView {
   using SafeCast for uint256;
 
   /// @dev Packed read context to keep `getLiquidityDepth` stack shallow for via-IR builds.
@@ -52,15 +53,10 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     uint256 out;
   }
 
-  // ============ State Variables ============
-
-  address internal immutable FACTORY;
-
   // ============ Constructor ============
 
-  constructor(address factory) {
+  constructor(address factory) MetricOmmPoolStateView(factory) {
     if (factory == address(0)) revert InvalidFactory();
-    FACTORY = factory;
   }
 
   // ============ External: swap data views ============
