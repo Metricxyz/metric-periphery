@@ -7,21 +7,20 @@ pragma solidity ^0.8.35;
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
-import {IMetricOmmPoolSwapDataProvider} from "../contracts/interfaces/IMetricOmmPoolSwapDataProvider.sol";
-import {MetricOmmPoolSwapDataProvider} from "../contracts/lens/MetricOmmPoolSwapDataProvider.sol";
+import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
-import {MockPriceProviderSDH, MetricOmmPoolSwapDataProviderTestBase} from "./MetricOmmPoolSwapDataProviderTestBase.sol";
+import {MockPriceProviderSDH, MetricOmmPoolDataProviderTestBase} from "./MetricOmmPoolDataProviderTestBase.sol";
 
-contract MetricOmmPoolSwapDataProviderTest is MetricOmmPoolSwapDataProviderTestBase {
+contract MetricOmmPoolDataProviderTest is MetricOmmPoolDataProviderTestBase {
   function setUp() public {}
 
   function test_constructorRevertsOnZeroFactory() public {
-    vm.expectRevert(IMetricOmmPoolSwapDataProvider.InvalidFactory.selector);
-    new MetricOmmPoolSwapDataProvider(address(0));
+    vm.expectRevert(MetricOmmPoolDataProvider.InvalidFactory.selector);
+    new MetricOmmPoolDataProvider(address(0));
   }
 
   function test_getBestBidAndAsk_includesSpreadAndNotionalFees() public {
-    (MetricOmmPool pool,,,, MetricOmmPoolSwapDataProvider helper,,,) =
+    (MetricOmmPool pool,,,, MetricOmmPoolDataProvider helper,,,) =
       _deployCase(18, 18, uint128(Q64), uint128(Q64), 0, 0, false);
     (uint128 bidX64, uint128 askX64) = helper.getBestBidAndAsk(address(pool));
     assertGt(askX64, Q64);
@@ -32,7 +31,7 @@ contract MetricOmmPoolSwapDataProviderTest is MetricOmmPoolSwapDataProviderTestB
     (
       MetricOmmPool pool,
       MockPriceProviderSDH oracle,,,
-      MetricOmmPoolSwapDataProvider helper,,
+      MetricOmmPoolDataProvider helper,,
       RouterTestFactory factoryStub,
     ) = _deployCase(18, 18, uint128(Q64), uint128(Q64), 0, 0, false);
     (uint128 bidX64, uint128 askX64) = helper.getBestBidAndAsk(address(pool));
@@ -44,10 +43,10 @@ contract MetricOmmPoolSwapDataProviderTest is MetricOmmPoolSwapDataProviderTestB
   }
 
   function test_getBestBidAndAsk_revertsOnInvalidOraclePrices() public {
-    (MetricOmmPool pool, MockPriceProviderSDH oracle,,, MetricOmmPoolSwapDataProvider helper,,,) =
+    (MetricOmmPool pool, MockPriceProviderSDH oracle,,, MetricOmmPoolDataProvider helper,,,) =
       _deployCase(18, 18, uint128(Q64), uint128(Q64), 0, 0, false);
     oracle.setBidAndAskPrice(2, 1);
-    vm.expectRevert(IMetricOmmPoolSwapDataProvider.InvalidOraclePrice.selector);
+    vm.expectRevert(MetricOmmPoolDataProvider.InvalidOraclePrice.selector);
     helper.getBestBidAndAsk(address(pool));
   }
 
@@ -65,7 +64,7 @@ contract MetricOmmPoolSwapDataProviderTest is MetricOmmPoolSwapDataProviderTestB
     uint128 askPriceX64,
     uint8 warmupMode
   ) internal {
-    (MetricOmmPool pool,,,, MetricOmmPoolSwapDataProvider helper, MetricOmmPoolSwapper router,,) =
+    (MetricOmmPool pool,,,, MetricOmmPoolDataProvider helper, MetricOmmPoolSwapper router,,) =
       _deployCase(token0Decimals, token1Decimals, bidPriceX64, askPriceX64, warmupMode, 0, false);
 
     uint256 smallOut1 = _smallTradeAmount(token1Decimals);

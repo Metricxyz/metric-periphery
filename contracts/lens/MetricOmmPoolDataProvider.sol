@@ -8,15 +8,52 @@ import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvi
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
 import {PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
-import {IMetricOmmPoolSwapDataProvider} from "../interfaces/IMetricOmmPoolSwapDataProvider.sol";
 import {MetricOmmPoolQuoter} from "../common/MetricOmmPoolQuoter.sol";
 import {MetricOmmPoolStateView} from "./MetricOmmPoolStateView.sol";
 
-/// @title MetricOmmPoolSwapDataProvider
+/// @title MetricOmmPoolDataProvider
 /// @notice Read-only swap data for MetricOMM pools: fee-adjusted bid/ask, per-bin depth ladders, and revert-based quotes.
-/// @dev Combines former `SwapDataHelper`, `LiquidityDepthHelper`, and `MetricOmmPoolQuoter`. Layout: constants and immutables, constructor, external views (`getBestBidAndAsk`, `getLiquidityDepth`), then internals grouped as factory/oracle context, bid/ask marginal path, depth reference prices, ladder assembly, fee-adjusted accumulation, and pure geometry/scale helpers.
-contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, MetricOmmPoolQuoter, MetricOmmPoolStateView {
+/// @dev For off-chain queries only (e.g. `eth_call`, indexers, UIs). Do not call from other contracts inside a transaction; this lens is not gas-optimized for on-chain composition.
+contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateView {
   using SafeCast for uint256;
+
+  // ============ Errors ============
+
+  /// @notice Constructor received zero factory address.
+  error InvalidFactory();
+  /// @notice Pool has neither mutable nor immutable price provider configured.
+  error InvalidPriceProvider();
+  /// @notice Oracle quote is invalid (`bid == 0` or `bid > ask`).
+  error InvalidOraclePrice();
+  /// @notice Combined notional fee is greater than or equal to 100%.
+  error InvalidNotionalFee();
+  /// @notice Distance-based price conversion received a negative distance lower than -1e6.
+  error InvalidDistance();
+  /// @notice Requested depth window exceeds the configured maximum.
+  error MaxBinsPerSideTooLarge();
+  /// @notice Bid depth ladder implied zero fee-adjusted execution price for a bin (division impossible).
+  error BidDepthBinAvgExecPriceZero();
+
+  // ============ Types ============
+
+  /// @notice One depth step on the ask (buy token0) or bid (sell token0) side.
+  struct DepthLevel {
+    int8 binIdx;
+    uint256 amountInBin;
+    uint256 amountCumulative;
+    uint256 binAvgExecPriceX64;
+    uint256 cumulativeAvgExecPriceX64;
+  }
+
+  /// @notice Full depth snapshot for a pool.
+  struct LiquidityDepth {
+    uint128 oracleBidX64;
+    uint128 oracleAskX64;
+    uint128 referenceBestBidX64;
+    uint128 referenceBestAskX64;
+    DepthLevel[] asks;
+    DepthLevel[] bids;
+  }
 
   /// @dev Packed read context to keep `getLiquidityDepth` stack shallow for via-IR builds.
   struct DepthEnv {
@@ -63,8 +100,8 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
 
   // ---- Best bid / ask (marginal + fee stack) ----
 
-  /// @inheritdoc IMetricOmmPoolSwapDataProvider
-  function getBestBidAndAsk(address pool) external view override returns (uint128 bestBidX64, uint128 bestAskX64) {
+  /// @notice Returns fee-adjusted best executable bid/ask prices in Q64.64.
+  function getBestBidAndAsk(address pool) external view returns (uint128 bestBidX64, uint128 bestAskX64) {
     address provider = _resolvePriceProvider(pool);
     (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
     if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
@@ -99,8 +136,8 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     bestBidX64 = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor).toUint128();
   }
 
-  /// @inheritdoc IMetricOmmPoolSwapDataProvider
-  function distanceFromProvidedPriceX64(address pool) external view override returns (int256 distanceX64) {
+  /// @notice Returns current distance from provided/mid price in signed X64 percentage units.
+  function distanceFromProvidedPriceX64(address pool) external view returns (int256 distanceX64) {
     (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
     (,, uint16 lengthE6,,) = PoolStateLibrary._binState(pool, curBinIdx);
 
@@ -121,8 +158,8 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     distanceX64 = signedBaseDistX64 + int256(inBinDistX64);
   }
 
-  /// @inheritdoc IMetricOmmPoolSwapDataProvider
-  function currentPriceX64(address pool) external view override returns (uint256 currentPriceX64Value) {
+  /// @notice Returns current in-bin marginal price in X64 format.
+  function currentPriceX64(address pool) external view returns (uint256 currentPriceX64Value) {
     address provider = _resolvePriceProvider(pool);
     (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
     if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
@@ -144,13 +181,8 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
 
   // ---- Per-bin depth ladders ----
 
-  /// @inheritdoc IMetricOmmPoolSwapDataProvider
-  function getLiquidityDepth(address pool, uint8 maxBinsPerSide)
-    external
-    view
-    override
-    returns (IMetricOmmPoolSwapDataProvider.LiquidityDepth memory depth)
-  {
+  /// @notice Computes read-only bid and ask depth ladders from the pool's current bin outward.
+  function getLiquidityDepth(address pool, uint8 maxBinsPerSide) external view returns (LiquidityDepth memory depth) {
     if (maxBinsPerSide == 0 || maxBinsPerSide > MAX_BINS_PER_SIDE_CAP) revert MaxBinsPerSideTooLarge();
 
     DepthEnv memory env = _loadDepthEnv(pool);
@@ -175,7 +207,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     int8 highCap = _highBinCap(env.imm.highestBin, env.curBinIdx, maxBinsPerSide);
     // forge-lint: disable-next-line(unsafe-typecast)
     uint256 askCount = env.curBinIdx <= highCap ? uint256(int256(highCap) - int256(env.curBinIdx) + 1) : 0;
-    depth.asks = new IMetricOmmPoolSwapDataProvider.DepthLevel[](askCount);
+    depth.asks = new DepthLevel[](askCount);
     _fillAsks(
       pool,
       env.token0ScaleMultiplier,
@@ -192,7 +224,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     int8 lowCap = _lowBinCap(env.imm.lowestBin, env.curBinIdx, maxBinsPerSide);
     // forge-lint: disable-next-line(unsafe-typecast)
     uint256 bidCount = env.curBinIdx >= lowCap ? uint256(int256(env.curBinIdx) - int256(lowCap) + 1) : 0;
-    depth.bids = new IMetricOmmPoolSwapDataProvider.DepthLevel[](bidCount);
+    depth.bids = new DepthLevel[](bidCount);
     _fillBids(
       pool,
       env.token1ScaleMultiplier,
@@ -381,7 +413,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     uint256 execStart = _feeAdjustedBidX64(mStartX64, sellSpreadE6, notionalFeeE8);
     uint256 execEnd = _feeAdjustedBidX64(mEndX64, sellSpreadE6, notionalFeeE8);
     binAvgExecPriceX64 = (execStart + execEnd) >> 1;
-    if (binAvgExecPriceX64 == 0) revert IMetricOmmPoolSwapDataProvider.BidDepthBinAvgExecPriceZero();
+    if (binAvgExecPriceX64 == 0) revert BidDepthBinAvgExecPriceZero();
 
     newCumToken1Out = cumToken1Out + amountExternal;
     uint256 token0Slice = Math.mulDiv(amountExternal, Q64, binAvgExecPriceX64, Math.Rounding.Floor);
@@ -400,7 +432,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     uint104 curPosInBin,
     int24 curBinDistFromProvidedPriceE6,
     int8 highCap,
-    IMetricOmmPoolSwapDataProvider.DepthLevel[] memory asks
+    DepthLevel[] memory asks
   ) internal view {
     AskFillCtx memory ctx;
     ctx.cumDistE6 = int256(curBinDistFromProvidedPriceE6);
@@ -422,7 +454,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     uint256 notionalFeeE8,
     int8 curBinIdx,
     uint104 curPosInBin,
-    IMetricOmmPoolSwapDataProvider.DepthLevel[] memory asks,
+    DepthLevel[] memory asks,
     AskFillCtx memory ctx,
     int256 b
   ) private view {
@@ -457,7 +489,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
       _accumulateAskLevel(buySpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, ctx.cumAmt, ctx.cumWeighted);
 
     uint256 cumVwapX64 = ctx.cumAmt == 0 ? 0 : ctx.cumWeighted / ctx.cumAmt;
-    asks[ctx.out] = IMetricOmmPoolSwapDataProvider.DepthLevel({
+    asks[ctx.out] = DepthLevel({
       binIdx: binIdx,
       amountInBin: amountExternal,
       amountCumulative: ctx.cumAmt,
@@ -479,7 +511,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
     uint104 curPosInBin,
     int24 curBinDistFromProvidedPriceE6,
     int8 lowCap,
-    IMetricOmmPoolSwapDataProvider.DepthLevel[] memory bids
+    DepthLevel[] memory bids
   ) internal view {
     int256 walkDistE6 = int256(curBinDistFromProvidedPriceE6);
     uint256 cumToken1Out;
@@ -506,7 +538,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
         sellSpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumToken1Out, cumToken0Sold
       );
 
-      bids[out++] = IMetricOmmPoolSwapDataProvider.DepthLevel({
+      bids[out++] = DepthLevel({
         binIdx: curBinIdx,
         amountInBin: amountExternal,
         amountCumulative: newCumToken1Out,
@@ -543,7 +575,7 @@ contract MetricOmmPoolSwapDataProvider is IMetricOmmPoolSwapDataProvider, Metric
         sellSpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumToken1Out, cumToken0Sold
       );
 
-      bids[out++] = IMetricOmmPoolSwapDataProvider.DepthLevel({
+      bids[out++] = DepthLevel({
         binIdx: binIdx,
         amountInBin: amountExternal,
         amountCumulative: newCumToken1Out,

@@ -2,12 +2,11 @@
 pragma solidity ^0.8.35;
 
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
-import {IMetricOmmPoolQuoter} from "./IMetricOmmPoolQuoter.sol";
 
 /// @title IMetricOmmPoolSwapper
 /// @notice Pool swapper interface: swaps, native wrappers, and quote passthrough.
 /// @dev Error signatures are external API and must remain stable once integrated.
-interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback, IMetricOmmPoolQuoter {
+interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   // ============ Errors ============
 
   /// @notice Swap deadline is in the past.
