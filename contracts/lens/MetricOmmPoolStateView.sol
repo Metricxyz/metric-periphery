@@ -4,12 +4,13 @@ pragma solidity ^0.8.35;
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
+import {StateViewBinBatch} from "./StateViewBinBatch.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title MetricOmmPoolStateView
 /// @notice Off-chain friendly view helpers reading v1 pool storage via EXTSLOAD.
-/// @dev Deploy one instance per factory (`constructor(factory)`). Factory metadata (admin, fees,
-///      pending price provider) should be read from `IMetricOmmPoolFactory` directly.
+/// @dev Deploy one instance per factory (`constructor(factory)`). Returns raw slot and bin values as stored.
+///      Factory metadata (admin, fees, pending price provider) should be read from `IMetricOmmPoolFactory` directly.
 contract MetricOmmPoolStateView {
   using SafeCast for uint256;
 
@@ -17,15 +18,6 @@ contract MetricOmmPoolStateView {
 
   constructor(address factory) {
     FACTORY = factory;
-  }
-
-  function _scaleMultipliers(address pool)
-    internal
-    view
-    returns (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier)
-  {
-    PoolImmutables memory immutables = IMetricOmmPoolFactory(FACTORY).poolImmutables(pool);
-    return (immutables.token0ScaleMultiplier, immutables.token1ScaleMultiplier);
   }
 
   function slot0(address pool)
@@ -46,11 +38,9 @@ contract MetricOmmPoolStateView {
   function slot1(address pool)
     external
     view
-    returns (uint128 _totalScaledToken0InBins, uint128 _totalScaledToken1InBins)
+    returns (uint128 totalScaledToken0InBins, uint128 totalScaledToken1InBins)
   {
-    (uint128 scaled0, uint128 scaled1) = PoolStateLibrary._slot1(pool);
-    (uint256 scale0, uint256 scale1) = _scaleMultipliers(pool);
-    return ((uint256(scaled0) / scale0).toUint128(), (uint256(scaled1) / scale1).toUint128());
+    return PoolStateLibrary._slot1(pool);
   }
 
   function slot2(address pool)
@@ -58,9 +48,7 @@ contract MetricOmmPoolStateView {
     view
     returns (uint128 notionalFeeToken0Scaled, uint128 notionalFeeToken1Scaled)
   {
-    (uint128 scaled0, uint128 scaled1) = PoolStateLibrary._slot2(pool);
-    (uint256 scale0, uint256 scale1) = _scaleMultipliers(pool);
-    return ((uint256(scaled0) / scale0).toUint128(), (uint256(scaled1) / scale1).toUint128());
+    return PoolStateLibrary._slot2(pool);
   }
 
   function priceProvider(address pool) external view returns (address) {
@@ -70,16 +58,6 @@ contract MetricOmmPoolStateView {
   }
 
   function binState(address pool, int8 binIdx)
-    external
-    view
-    returns (uint104 token0Balance, uint104 token1Balance, uint16 lengthE6, uint16 addFeeBuyE6, uint16 addFeeSellE6)
-  {
-    (uint104 scaled0, uint104 scaled1, uint16 len, uint16 buy, uint16 sell) = PoolStateLibrary._binState(pool, binIdx);
-    (uint256 scale0, uint256 scale1) = _scaleMultipliers(pool);
-    return ((uint256(scaled0) / scale0).toUint104(), (uint256(scaled1) / scale1).toUint104(), len, buy, sell);
-  }
-
-  function binStateScaled(address pool, int8 binIdx)
     external
     view
     returns (
@@ -101,41 +79,6 @@ contract MetricOmmPoolStateView {
     external
     view
     returns (
-      uint104[] memory token0Balances,
-      uint104[] memory token1Balances,
-      uint16[] memory lengthsInUnits,
-      uint16[] memory addFeeBuysE6,
-      uint16[] memory addFeeSellsE6,
-      uint104[] memory totalShares
-    )
-  {
-    uint256 len = binIdxs.length;
-    bytes32[] memory states = PoolStateLibrary._multipleBinStates(pool, binIdxs);
-    bytes32[] memory sharesRaw = PoolStateLibrary._multipleBinTotalShares(pool, binIdxs);
-    token0Balances = new uint104[](len);
-    token1Balances = new uint104[](len);
-    lengthsInUnits = new uint16[](len);
-    addFeeBuysE6 = new uint16[](len);
-    addFeeSellsE6 = new uint16[](len);
-    totalShares = new uint104[](len);
-    (uint256 scale0, uint256 scale1) = _scaleMultipliers(pool);
-
-    for (uint256 i = 0; i < len; i++) {
-      (uint104 s0, uint104 s1, uint16 l, uint16 b, uint16 s) = PoolStateLibrary._decodeBinState(states[i]);
-      token0Balances[i] = (uint256(s0) / scale0).toUint104();
-      token1Balances[i] = (uint256(s1) / scale1).toUint104();
-      lengthsInUnits[i] = l;
-      addFeeBuysE6[i] = b;
-      addFeeSellsE6[i] = s;
-      totalShares[i] = PoolStateLibrary._decodeBinTotalShares(sharesRaw[i]).toUint104();
-    }
-  }
-
-  /// @notice Batch read bin state in scaled (internal) units plus total shares per bin.
-  function binStatesScaled(address pool, int8[] calldata binIdxs)
-    external
-    view
-    returns (
       uint104[] memory token0BalancesScaled,
       uint104[] memory token1BalancesScaled,
       uint16[] memory lengthsInUnits,
@@ -144,25 +87,9 @@ contract MetricOmmPoolStateView {
       uint104[] memory totalShares
     )
   {
-    uint256 len = binIdxs.length;
-    bytes32[] memory states = PoolStateLibrary._multipleBinStates(pool, binIdxs);
-    bytes32[] memory sharesRaw = PoolStateLibrary._multipleBinTotalShares(pool, binIdxs);
-    token0BalancesScaled = new uint104[](len);
-    token1BalancesScaled = new uint104[](len);
-    lengthsInUnits = new uint16[](len);
-    addFeeBuysE6 = new uint16[](len);
-    addFeeSellsE6 = new uint16[](len);
-    totalShares = new uint104[](len);
-
-    for (uint256 i = 0; i < len; i++) {
-      (uint104 s0, uint104 s1, uint16 l, uint16 b, uint16 s) = PoolStateLibrary._decodeBinState(states[i]);
-      token0BalancesScaled[i] = s0;
-      token1BalancesScaled[i] = s1;
-      lengthsInUnits[i] = l;
-      addFeeBuysE6[i] = b;
-      addFeeSellsE6[i] = s;
-      totalShares[i] = PoolStateLibrary._decodeBinTotalShares(sharesRaw[i]).toUint104();
-    }
+    return StateViewBinBatch.decode(
+      PoolStateLibrary._multipleBinStates(pool, binIdxs), PoolStateLibrary._multipleBinTotalShares(pool, binIdxs)
+    );
   }
 
   function positionBinShares(address pool, address owner, uint80 salt, int8 bin) external view returns (uint104) {
