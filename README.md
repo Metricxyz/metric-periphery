@@ -14,14 +14,9 @@ Shared **MetricOmmPoolQuoter** is in `contracts/common/MetricOmmPoolQuoter.sol` 
 
 ## Dependencies
 
-This project depends on:
+This project depends on [metric-core](https://github.com/Metric-OMM/metric-core) as a git submodule under `lib/metric-core`. OpenZeppelin Contracts and forge-std are not vendored separately in this repo; `remappings.txt` resolves them through metric-core’s own `lib/` copies so versions stay aligned with core.
 
-- [metric-core](https://github.com/Metric-OMM/metric-core)
-- [forge-std](https://github.com/foundry-rs/forge-std)
-- [openzeppelin-contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)
-- [sstore2](https://github.com/0xsequence/sstore2)
-
-All dependencies are configured as git submodules under `lib/`.
+After `git submodule update --init --recursive`, metric-core’s nested submodules (`lib/forge-std`, `lib/openzeppelin-contracts`) are available for Foundry builds.
 
 > **Note:** `metric-core` is private. Ensure your GitHub credentials (SSH key or token) have access.
 
