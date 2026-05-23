@@ -1,51 +1,48 @@
-# Metric Periphery
+# Metric OMM Core
 
-Periphery contracts for the MetricOMM protocol: pool swaps, read-only swap and depth data, and liquidity adds with caller-funded settlement.
+Core smart contracts for the Metric OMM protocol: oracle-based pools with bin-based liquidity, factory deployment, and EXTSLOAD-aligned state reads.
 
 ## Overview
 
-Main Solidity contracts (implementation):
+Pools use external price providers for bid/ask, maintain liquidity in configurable bins, and enforce pause levels and optional deposit/swap allowlists. Integrators typically interact via **`IMetricOmmPool`** (composed actions, fee collection, and factory hooks).
 
-- **MetricOmmPoolSwapper** — Executes swaps against pools, including native ETH paths, and inherits **MetricOmmPoolQuoter** for `quoteSwap`-style simulation on the same code path.
-- **MetricOmmPoolSwapDataProvider** — Read-only contract combining best bid/ask, liquidity depth ladders, and quoter behavior; extends the shared **MetricOmmPoolQuoter** base from `contracts/common/`.
-- **MetricOmmPoolLiquidityAdder** — Adds liquidity on behalf of callers with max-token caps and weighted or exact-share flows.
+## Contracts
 
-Shared **MetricOmmPoolQuoter** is in `contracts/common/MetricOmmPoolQuoter.sol` and is extended by both the swapper and the swap data provider.
+### Pool and factory
 
-## Dependencies
+- **MetricOmmPool.sol** — Main pool (liquidity, swap, simulation, factory/protocol hooks).
+- **MetricOmmPoolFactory.sol** — Pool registry, fee caps, `createPool`, deployer wiring, pools' administrative actions
+- **MetricOmmPoolDeployer.sol** — CREATE2-style deployment of pool bytecode (factory-only).
 
-This project depends on [metric-core](https://github.com/Metric-OMM/metric-core) as a git submodule under `lib/metric-core`. OpenZeppelin Contracts and forge-std are not vendored separately in this repo; `remappings.txt` resolves them through metric-core’s own `lib/` copies so versions stay aligned with core.
+### Supporting contracts
 
-After `git submodule update --init --recursive`, metric-core’s nested submodules (`lib/forge-std`, `lib/openzeppelin-contracts`) are available for Foundry builds.
+- **Extsload.sol** — `EXTSLOAD`-based storage reads (forked from Uniswap v4-style pattern); pool layout must stay aligned with **PoolStateLibrary**.
+- **Hooks** — Optional per-pool `IMetricOmmHooks` (`hooks` + `hooksPermissions` at deploy). Product hooks live in **metric-periphery**; core tests plumbing via `test/mocks/MockMetricHook.sol` and `test/mocks/hooks/GateHook.sol` (see `test/README.hooks.md`).
 
-> **Note:** `metric-core` is private. Ensure your GitHub credentials (SSH key or token) have access.
+### Libraries
 
-### CI (GitHub Actions)
+- **SwapMath.sol** — Pure swap/step math.
+- **BinDataLibrary.sol** — Bin encoding helpers.
+- **PoolStateLibrary.sol** — Slot helpers for EXTSLOAD readers; must match **MetricOmmPool** storage packing.
+- **Slot0Library.sol** — Pack/unpack storage slot 0 (`packedSlot0` on swap hooks).
+- **MetricHooks.sol** — Hook permission flags and `callHook` helpers.
 
-CI checks out this repository with the default `GITHUB_TOKEN`, then clones submodules in a separate step. That token cannot read other private repos, so add a **repository secret** `PRIVATE_SUBMODULES_PAT`: a [personal access token](https://github.com/settings/tokens) with **read access to `Metric-OMM/metric-core` only** (fine-grained is enough). The workflow rewrites only `https://github.com/Metric-OMM/…` URLs to use that PAT, so it must **not** be passed as the `actions/checkout` `token` input (that would authenticate the main fetch and a core-only PAT yields 403 on `metric-periphery`). Without the secret, submodule init fails (often “repository not found” for `metric-core`).
+## Requirements
 
-If `.gitmodules` was updated (e.g. org rename), run `git submodule sync --recursive` once so local remotes match.
+- [Foundry](https://book.getfoundry.sh/getting-started/installation) (pin locally to the version in `.github/workflows/test.yml` for consistent `forge fmt --check`).
 
-## Setup
-
-### Install Foundry
+## Installation
 
 ```bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
+git clone --recursive https://github.com/Metric-OMM/metric-core.git
+cd metric-core
+forge build
 ```
 
-### Initialize submodules
+If you cloned without `--recursive`:
 
 ```bash
-# after clone
 git submodule update --init --recursive
-```
-
-Or clone with submodules in one step:
-
-```bash
-git clone --recurse-submodules https://github.com/Metric-OMM/metric-periphery.git
 ```
 
 ## Build
@@ -54,52 +51,73 @@ git clone --recurse-submodules https://github.com/Metric-OMM/metric-periphery.gi
 forge build
 ```
 
-## Test
+## Testing
 
 ```bash
+# All tests (Solidity tests under test/)
 forge test
-```
 
-With verbosity:
-
-```bash
 forge test -vvv
+
+# Example: single file
+forge test --match-path test/MetricOmmPool.swap.t.sol
+
+forge test --gas-report
 ```
 
 ## Formatting
 
-- **Solidity**: Foundry only.
+- **Solidity** (`contracts/`, `test/`): use Foundry only so CI and locals stay aligned.
 
 ```bash
-forge fmt --check
+npm run format:forge:check   # same as CI
 forge fmt
 ```
 
-- **Markdown / JSON / YAML** (optional): after `npm install`, run `npm run format:prettier` or `npm run format:prettier:check`. Solidity is listed in `.prettierignore` — use **`forge fmt`** for `.sol` files, not Prettier.
+Or run both Prettier and Foundry checks: `npm run format:check`.
 
-CI runs Prettier check, `forge fmt --check`, build, and tests (see `.github/workflows/test.yml`). Workflows pin **Foundry 1.7.0** and **`solc` 0.8.35** — match locally (`forge --version`, same `foundry.toml` `solc`).
+- **Other text** (Markdown, JSON, YAML, and other Prettier-supported files outside ignored paths): `npm install` then `npm run format:prettier` / `npm run format:prettier:check`. Solidity and `contracts/` / `test/` are excluded via `.prettierignore`; use **`forge fmt`** for `.sol` files.
 
-Running **`npm install`** sets **`git config --local core.hooksPath`** to this repo’s `.githooks` (absolute path, worktree-safe). Verify:
+CI runs Prettier check and `forge fmt --check` (see `.github/workflows/test.yml`). Workflows pin **Foundry 1.7.0** and **`solc` 0.8.35** — match locally (`forge --version`, same `foundry.toml` `solc`).
+
+### Local pre-commit hook
+
+Running **`npm install`** executes the **`prepare`** script, which sets **`git config --local core.hooksPath .githooks`**. Verify hooks are active:
 
 ```bash
-git config --local --get core.hooksPath
+git config --local --get core.hooksPath   # must print: .githooks
 ```
 
-The pre-commit hook runs **`npm run format:prettier:check`**, **`forge fmt --check`**, **`forge build`**, and **`forge test`**. Foundry must be on `PATH`. Skip with **`git commit --no-verify`**.
+If empty, enable manually:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+The hook runs **`npm run format:prettier:check`**, **`forge fmt --check`** (fails the commit on format drift), and **`forge test`**. Foundry must be on `PATH`. Skip with **`git commit --no-verify`**.
+
+## Documentation
+
+- **[Pool configuration and management](docs/POOL_CONFIGURATION_AND_MANAGEMENT.md)** — `createPool` / constructor parameters, bins, admin vs protocol roles.
 
 ## Project structure
 
 ```text
 contracts/
-├── MetricOmmPoolSwapper.sol
-├── MetricOmmPoolLiquidityAdder.sol
-├── MetricOmmPoolSwapDataProvider.sol
-├── interfaces/          # IMetricOmmPoolSwapper, IMetricOmmPoolQuoter, IMetricOmmPoolSwapDataProvider, IMetricOmmPoolLiquidityAdder, IWETH9
-├── common/
-│   └── MetricOmmPoolQuoter.sol       # Shared quoter; inherited by swapper and swap data provider
+├── MetricOmmPool.sol
+├── MetricOmmPoolFactory.sol
+├── MetricOmmPoolDeployer.sol
+├── Extsload.sol
+├── interfaces/
+│   ├── IMetricOmmPool/
+│   ├── IMetricOmmPoolFactory/
+│   ├── IPriceProvider/
+│   └── callbacks/
+├── libraries/
+└── types/
 
-test/                    # Foundry tests (*.t.sol) and shared helpers (RouterTestFactory, SwapDataHelperTestBase, …)
-test/mocks/              # MockWETH9 and other test-only doubles
+test/                  # Foundry tests (*.t.sol, harnesses)
+test/mocks/            # Test doubles (e.g. MockERC20, MockOracle, TestCaller)
 ```
 
 ## License

@@ -5,13 +5,14 @@ prep *args: fix (test-forge args)
 
 # Forge commands
 test-forge *args: build-forge
-  forge test --isolate {{args}}
+    forge test --isolate {{args}}
 
 build-forge *args: install-forge
-  forge build {{args}}
+    forge build {{args}}
 
-install-forge: git submodule update --init --recursive
-  forge install
+install-forge:
+    forge install
 
 # Formatting
-fix: forge fmt
+fix:
+    forge fmt
