@@ -1,3 +1,4 @@
 [submodule "lib/metric-core"]
 	path = lib/metric-core
 	url = https://github.com/Metric-OMM/metric-core.git
+	branch = dev-hooks

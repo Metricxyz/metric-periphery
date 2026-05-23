@@ -2,6 +2,7 @@
 # Runs before each commit: Prettier (non-Solidity), forge fmt --check, forge test.
 # Requires: npm install (once) for Prettier; Foundry on PATH.
 # Enable: npm install  (sets git config --local core.hooksPath .githooks)
+#         or: git config --local core.hooksPath .githooks
 # Skip: git commit --no-verify
 
 set -eu
@@ -30,9 +31,6 @@ if ! forge fmt --check; then
   echo "pre-commit: forge fmt --check failed. Run: forge fmt" >&2
   exit 1
 fi
-
-echo "pre-commit: forge build..."
-forge build
 
 echo "pre-commit: forge test..."
 forge test
