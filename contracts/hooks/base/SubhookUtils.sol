@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
+import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
-import {MetricSubhook} from "./MetricSubhook.sol";
 
-/// @title MetricFactorySubhook
-/// @notice Shared factory wiring for pool-scoped subhooks.
-abstract contract MetricFactorySubhook is MetricSubhook {
+/// @title SubhookUtils
+/// @notice Shared factory wiring and helpers for pool-scoped subhooks.
+abstract contract SubhookUtils {
   address public immutable FACTORY;
 
   error OnlyPoolAdmin(address pool, address caller, address admin);
@@ -16,18 +16,25 @@ abstract contract MetricFactorySubhook is MetricSubhook {
     FACTORY = factory_;
   }
 
+  /// @notice Permission flags required by this subhook (`MetricHooks.*_FLAG`).
+  function subhookPermissions() internal pure virtual returns (uint16);
+
   /// @dev Implement in composed hooks that inherit `BaseMetricHook`.
   function _hookPool() internal view virtual returns (address);
 
   function _onlyPoolAdmin() internal view {
     address pool_ = _hookPool();
+    _onlyPoolAdmin(pool_);
+  }
+
+  function _onlyPoolAdmin(address pool_) internal view {
     address poolAdmin = IMetricOmmPoolFactory(FACTORY).poolAdmin(pool_);
     if (msg.sender != poolAdmin) revert OnlyPoolAdmin(pool_, msg.sender, poolAdmin);
   }
 
   function _resolvedPriceProvider(address pool_) internal view virtual returns (address) {
-    address mutableProvider = PoolStateLibrary._slot3(pool_);
-    if (mutableProvider != address(0)) return mutableProvider;
-    return IMetricOmmPoolFactory(FACTORY).poolImmutables(pool_).immutablePriceProvider;
+    address immutablePriceProvider = IMetricOmmPool(pool_).getImmutables().immutablePriceProvider;
+    if (immutablePriceProvider != address(0)) return immutablePriceProvider;
+    return PoolStateLibrary._slot3(pool_);
   }
 }

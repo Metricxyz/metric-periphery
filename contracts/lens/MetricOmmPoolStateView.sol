@@ -2,8 +2,8 @@
 pragma solidity ^0.8.35;
 
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
+import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
-import {PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title MetricOmmPoolStateView
@@ -53,7 +53,7 @@ contract MetricOmmPoolStateView {
   function priceProvider(address pool) external view returns (address) {
     address mutableProvider = PoolStateLibrary._slot3(pool);
     if (mutableProvider != address(0)) return mutableProvider;
-    return IMetricOmmPoolFactory(FACTORY).poolImmutables(pool).immutablePriceProvider;
+    return IMetricOmmPool(pool).getImmutables().immutablePriceProvider;
   }
 
   function binState(address pool, int8 binIdx)

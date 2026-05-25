@@ -4,8 +4,8 @@ pragma solidity ^0.8.35;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {IMetricOmmPoolLiquidityAdder} from "./interfaces/IMetricOmmPoolLiquidityAdder.sol";
 
@@ -29,16 +29,9 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
   uint256 private constant T_SLOT_PAY_MAX0 = 2;
   uint256 private constant T_SLOT_PAY_MAX1 = 3;
 
-  // ============ State Variables ============
-
-  address internal immutable POOL_FACTORY;
-
   // ============ Constructor ============
 
-  constructor(address poolFactory) {
-    if (poolFactory == address(0)) revert InvalidPoolFactory();
-    POOL_FACTORY = poolFactory;
-  }
+  constructor() {}
 
   // ============ External: liquidity ============
 
@@ -142,7 +135,9 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
       revert MaxAmountExceeded(amount0Delta, amount1Delta, max0, max1);
     }
 
-    (address token0, address token1) = IMetricOmmPoolFactory(POOL_FACTORY).poolTokens(msg.sender);
+    PoolImmutables memory imm = IMetricOmmPool(msg.sender).getImmutables();
+    address token0 = imm.token0;
+    address token1 = imm.token1;
     if (amount0Delta > 0) {
       IERC20(token0).safeTransferFrom(payer, msg.sender, amount0Delta);
     }

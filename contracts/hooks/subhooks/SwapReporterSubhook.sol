@@ -5,16 +5,17 @@ import {IPriceProviderSwapReporter} from "@metric-core/interfaces/IPriceProvider
 import {MetricHooks} from "@metric-core/libraries/MetricHooks.sol";
 import {PoolSlot0} from "@metric-core/types/HookTypes.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
-import {MetricFactorySubhook} from "../base/MetricFactorySubhook.sol";
+import {SubhookUtils} from "../base/SubhookUtils.sol";
 
 /// @title SwapReporterSubhook
 /// @notice Best-effort post-swap reporting to the pool's active price provider.
-abstract contract SwapReporterSubhook is MetricFactorySubhook {
+abstract contract SwapReporterSubhook is SubhookUtils {
   function subhookPermissions() internal pure virtual override returns (uint16) {
     return MetricHooks.AFTER_SWAP_FLAG;
   }
 
   function _afterSwapReport(
+    address pool_,
     address sender,
     address recipient,
     bool zeroForOne,
@@ -25,7 +26,7 @@ abstract contract SwapReporterSubhook is MetricFactorySubhook {
     int128 amount1Delta
   ) internal {
     PoolSlot0 memory slot0Final = Slot0Library.unpack(packedSlot0Final);
-    address priceProvider = _resolvedPriceProvider(_hookPool());
+    address priceProvider = _resolvedPriceProvider(pool_);
     if (priceProvider == address(0)) return;
 
     try IPriceProviderSwapReporter(priceProvider)

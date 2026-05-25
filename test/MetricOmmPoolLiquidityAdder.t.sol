@@ -7,7 +7,7 @@ import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
-import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
+import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MetricOmmPoolStateView} from "../contracts/lens/MetricOmmPoolStateView.sol";
@@ -126,20 +126,6 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
     factoryStub.registerPool(
       address(pool),
-      PoolImmutables({
-        token0: address(weth),
-        token1: address(token1),
-        immutablePriceProvider: address(oracle),
-        hooks: address(0),
-        hooksPermissions: uint16(0),
-        token0ScaleMultiplier: token0ScaleMultiplier,
-        token1ScaleMultiplier: token1ScaleMultiplier,
-        initialScaledAmount0PerShareE18: INITIAL_TOKEN_0_DENSITY,
-        initialScaledAmount1PerShareE18: INITIAL_TOKEN_1_DENSITY,
-        minimalMintableLiquidity: MINIMAL_MINTABLE_LIQUIDITY,
-        lowestBin: -5,
-        highestBin: 4
-      }),
       PoolFeeConfig({
         protocolSpreadFeeE6: PROTOCOL_FEE, adminSpreadFeeE6: ADMIN_FEE, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0
       }),
@@ -147,7 +133,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       address(this)
     );
 
-    helper = new MetricOmmPoolLiquidityAdder(address(factoryStub));
+    helper = new MetricOmmPoolLiquidityAdder();
     stateView = new MetricOmmPoolStateView(address(factoryStub));
 
     vm.deal(alice, 100 ether);

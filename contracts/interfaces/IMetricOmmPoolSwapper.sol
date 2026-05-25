@@ -29,8 +29,6 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   error InvalidSwapDeltas();
   /// @notice Constructor received zero WETH address.
   error InvalidWETH();
-  /// @notice Constructor received zero pool factory address.
-  error InvalidPoolFactory();
   /// @notice ETH was sent to a function that does not accept native input.
   error NativeValueNotExpected();
   /// @notice Native-input mode attempted to pay non-WETH token.

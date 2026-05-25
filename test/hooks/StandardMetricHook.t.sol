@@ -60,7 +60,7 @@ contract StandardMetricHookTest is MetricOmmPoolBaseTest {
   }
 
   function test_blocksSwapWhenSwapperNotAllowed() public {
-    hook.setAllowedToDeposit(_getCallerAddress(0), true);
+    hook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
     _addLiquidity(0, -5, 4, 100_000, HOOK_TEST_SALT);
 
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToSwap.selector);
@@ -73,8 +73,8 @@ contract StandardMetricHookTest is MetricOmmPoolBaseTest {
   }
 
   function test_swapReportsAfterAllowedSwap() public {
-    hook.setAllowedToDeposit(_getCallerAddress(0), true);
-    hook.setAllowedToSwap(address(callers[0]), true);
+    hook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
+    hook.setAllowedToSwap(address(pool), address(callers[0]), true);
 
     _addLiquidity(0, -5, 4, 100_000, HOOK_TEST_SALT);
 

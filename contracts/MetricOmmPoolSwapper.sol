@@ -3,8 +3,8 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 import {MetricOmmPoolQuoter} from "./common/MetricOmmPoolQuoter.sol";
 import {IMetricOmmPoolSwapper} from "./interfaces/IMetricOmmPoolSwapper.sol";
@@ -36,16 +36,12 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
   // ============ State Variables ============
 
   address internal immutable WETH;
-  /// @notice Factory that indexes `pool => (token0, token1)` via `getTokens` (matches metric-core deployment model).
-  address internal immutable POOL_FACTORY;
 
   // ============ Constructor ============
 
-  constructor(address weth, address poolFactory) {
+  constructor(address weth) {
     if (weth == address(0)) revert InvalidWETH();
-    if (poolFactory == address(0)) revert InvalidPoolFactory();
     WETH = weth;
-    POOL_FACTORY = poolFactory;
   }
 
   // ============ External: lifecycle ============
@@ -234,7 +230,9 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     (address payer, address pool, uint256 flags) = _loadSwapContext();
     if (msg.sender != pool) revert InvalidCallbackCaller();
 
-    (address token0, address token1) = IMetricOmmPoolFactory(POOL_FACTORY).getTokens(pool);
+    PoolImmutables memory imm = IMetricOmmPool(pool).getImmutables();
+    address token0 = imm.token0;
+    address token1 = imm.token1;
 
     bool zeroForOne = (flags & FLAG_ZERO_FOR_ONE) != 0;
     bool payerIsNative = (flags & FLAG_PAYER_IS_NATIVE) != 0;

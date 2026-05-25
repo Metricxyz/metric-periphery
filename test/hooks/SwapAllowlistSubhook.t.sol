@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
 import {SwapAllowlistSubhookHarness} from "./SubhookHarness.sol";
-import {MetricFactorySubhook} from "../../contracts/hooks/base/MetricFactorySubhook.sol";
+import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 
 contract SwapAllowlistSubhookTest is Test {
@@ -28,21 +28,21 @@ contract SwapAllowlistSubhookTest is Test {
 
   function test_passesWhenSwapperAllowed() public {
     vm.prank(admin);
-    harness.setAllowedToSwap(swapper, true);
+    harness.setAllowedToSwap(pool, swapper, true);
     harness.exposeBeforeSwapAllowlist(swapper);
   }
 
   function test_onlyPoolAdminCanSetSwappers() public {
     vm.prank(admin);
-    harness.setAllowedToSwap(swapper, true);
-    assertTrue(harness.isAllowedToSwap(swapper));
+    harness.setAllowedToSwap(pool, swapper, true);
+    assertTrue(harness.isAllowedToSwap(pool, swapper));
 
     vm.prank(swapper);
-    vm.expectRevert(abi.encodeWithSelector(MetricFactorySubhook.OnlyPoolAdmin.selector, pool, swapper, admin));
-    harness.setAllowedToSwap(swapper, false);
+    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, pool, swapper, admin));
+    harness.setAllowedToSwap(pool, swapper, false);
   }
 
   function test_deniesByDefault() public view {
-    assertFalse(harness.isAllowedToSwap(swapper));
+    assertFalse(harness.isAllowedToSwap(pool, swapper));
   }
 }

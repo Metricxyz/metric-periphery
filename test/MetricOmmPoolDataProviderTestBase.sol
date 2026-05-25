@@ -7,7 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
-import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
+import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {
@@ -15,7 +15,7 @@ import {
 } from "@metric-core/interfaces/callbacks/IMetricOmmModifyLiquidityCallback.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
-import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
+import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
@@ -81,12 +81,6 @@ contract MockPriceProviderSDH is IPriceProvider {
 contract LiquiditySeederForSwapData is IMetricOmmModifyLiquidityCallback {
   using SafeERC20 for IERC20;
 
-  address public immutable FACTORY;
-
-  constructor(address factory) {
-    FACTORY = factory;
-  }
-
   function addLiquidityRange(address pool, uint80 salt, int256 lowerBin, int256 upperBin, uint256 sharesPerBin)
     external
   {
@@ -107,7 +101,7 @@ contract LiquiditySeederForSwapData is IMetricOmmModifyLiquidityCallback {
     external
     override
   {
-    PoolImmutables memory imm = IMetricOmmPoolFactory(FACTORY).poolImmutables(msg.sender);
+    PoolImmutables memory imm = IMetricOmmPool(msg.sender).getImmutables();
     if (amount0Delta > 0) IERC20(imm.token0).safeTransfer(msg.sender, amount0Delta);
     if (amount1Delta > 0) IERC20(imm.token1).safeTransfer(msg.sender, amount1Delta);
   }
@@ -190,20 +184,6 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
 
     factoryStub.registerPool(
       address(pool),
-      PoolImmutables({
-        token0: address(token0),
-        token1: address(token1),
-        immutablePriceProvider: address(oracle),
-        hooks: address(0),
-        hooksPermissions: uint16(0),
-        token0ScaleMultiplier: token0ScaleMultiplier,
-        token1ScaleMultiplier: token1ScaleMultiplier,
-        initialScaledAmount0PerShareE18: INITIAL_TOKEN_0_DENSITY,
-        initialScaledAmount1PerShareE18: INITIAL_TOKEN_1_DENSITY,
-        minimalMintableLiquidity: MINIMAL_MINTABLE_LIQUIDITY,
-        lowestBin: fullBinRange ? type(int8).min : int8(-5),
-        highestBin: fullBinRange ? type(int8).max : int8(4)
-      }),
       PoolFeeConfig({
         protocolSpreadFeeE6: PROTOCOL_SPREAD,
         adminSpreadFeeE6: ADMIN_SPREAD,
@@ -215,8 +195,8 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     );
 
     helper = new MetricOmmPoolDataProvider(address(factoryStub));
-    router = new MetricOmmPoolSwapper(address(new MockWETH9()), address(factoryStub));
-    seeder = new LiquiditySeederForSwapData(address(factoryStub));
+    router = new MetricOmmPoolSwapper(address(new MockWETH9()));
+    seeder = new LiquiditySeederForSwapData();
 
     uint256 sharesPerBin = sharesPerBinOverride == 0 ? SHARES_PER_BIN : sharesPerBinOverride;
     uint256 mintFactor = sharesPerBin / SHARES_PER_BIN;
