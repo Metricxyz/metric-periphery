@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Test} from "forge-std/Test.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
 import {DepositAllowlistSubhookHarness} from "./SubhookHarness.sol";
-import {MetricFactorySubhook} from "../../contracts/hooks/base/MetricFactorySubhook.sol";
+import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 
 contract DepositAllowlistSubhookTest is Test {
@@ -28,21 +28,21 @@ contract DepositAllowlistSubhookTest is Test {
 
   function test_passesWhenDepositorAllowed() public {
     vm.prank(admin);
-    harness.setAllowedToDeposit(depositor, true);
+    harness.setAllowedToDeposit(pool, depositor, true);
     harness.exposeBeforeAddLiquidityAllowlist(depositor);
   }
 
   function test_onlyPoolAdminCanSetDepositors() public {
     vm.prank(admin);
-    harness.setAllowedToDeposit(depositor, true);
-    assertTrue(harness.isAllowedToDeposit(depositor));
+    harness.setAllowedToDeposit(pool, depositor, true);
+    assertTrue(harness.isAllowedToDeposit(pool, depositor));
 
     vm.prank(depositor);
-    vm.expectRevert(abi.encodeWithSelector(MetricFactorySubhook.OnlyPoolAdmin.selector, pool, depositor, admin));
-    harness.setAllowedToDeposit(depositor, false);
+    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, pool, depositor, admin));
+    harness.setAllowedToDeposit(pool, depositor, false);
   }
 
   function test_deniesByDefault() public view {
-    assertFalse(harness.isAllowedToDeposit(depositor));
+    assertFalse(harness.isAllowedToDeposit(pool, depositor));
   }
 }

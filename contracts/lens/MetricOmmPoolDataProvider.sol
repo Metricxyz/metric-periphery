@@ -3,11 +3,11 @@ pragma solidity ^0.8.35;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
-import {PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
 import {MetricOmmPoolQuoter} from "../common/MetricOmmPoolQuoter.sol";
 import {MetricOmmPoolStateView} from "./MetricOmmPoolStateView.sol";
 
@@ -244,14 +244,15 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
   function _resolvePriceProvider(address pool) internal view returns (address provider) {
     provider = PoolStateLibrary._slot3(pool);
     if (provider == address(0)) {
-      provider = IMetricOmmPoolFactory(FACTORY).poolImmutables(pool).immutablePriceProvider;
+      provider = IMetricOmmPool(pool).getImmutables().immutablePriceProvider;
     }
     if (provider == address(0)) revert InvalidPriceProvider();
   }
 
   function _loadDepthEnv(address pool) internal view returns (DepthEnv memory env) {
-    env.imm = IMetricOmmPoolFactory(FACTORY).poolImmutables(pool);
-    (env.token0ScaleMultiplier, env.token1ScaleMultiplier) = IMetricOmmPoolFactory(FACTORY).poolScaleMultipliers(pool);
+    env.imm = IMetricOmmPool(pool).getImmutables();
+    env.token0ScaleMultiplier = env.imm.token0ScaleMultiplier;
+    env.token1ScaleMultiplier = env.imm.token1ScaleMultiplier;
     (uint24 protocolSpreadFeeE6, uint24 adminSpreadFeeE6, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) =
       IMetricOmmPoolFactory(FACTORY).poolFeeConfig(pool);
     env.notionalFeeE8 = uint256(protocolNotionalFeeE8) + uint256(adminNotionalFeeE8);
@@ -263,18 +264,18 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
     (, env.curBinIdx, env.curPosInBin, env.curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
   }
 
-  function _highBinCap(int8 highestBin, int8 curBinIdx, uint8 maxBinsPerSide) internal pure returns (int8 highCap) {
+  function _highBinCap(int256 highestBin, int8 curBinIdx, uint8 maxBinsPerSide) internal pure returns (int8 highCap) {
     // forge-lint: disable-next-line(unsafe-typecast)
     int256 hi = int256(curBinIdx) + int256(uint256(maxBinsPerSide));
-    if (hi > int256(highestBin)) hi = int256(highestBin);
+    if (hi > highestBin) hi = highestBin;
     // forge-lint: disable-next-line(unsafe-typecast)
     highCap = int8(hi);
   }
 
-  function _lowBinCap(int8 lowestBin, int8 curBinIdx, uint8 maxBinsPerSide) internal pure returns (int8 lowCap) {
+  function _lowBinCap(int256 lowestBin, int8 curBinIdx, uint8 maxBinsPerSide) internal pure returns (int8 lowCap) {
     // forge-lint: disable-next-line(unsafe-typecast)
     int256 lo = int256(curBinIdx) - int256(uint256(maxBinsPerSide));
-    if (lo < int256(lowestBin)) lo = int256(lowestBin);
+    if (lo < lowestBin) lo = lowestBin;
     // forge-lint: disable-next-line(unsafe-typecast)
     lowCap = int8(lo);
   }

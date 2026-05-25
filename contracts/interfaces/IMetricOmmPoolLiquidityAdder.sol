@@ -13,8 +13,6 @@ import {
 interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   // ============ Errors ============
 
-  /// @notice Constructor received zero factory address.
-  error InvalidPoolFactory();
   /// @notice Owner argument is zero address for owner-based add path.
   error InvalidPositionOwner();
   /// @notice `LiquidityDelta` arrays have different lengths.

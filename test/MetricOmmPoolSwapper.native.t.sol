@@ -6,15 +6,15 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
+import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {
   IMetricOmmModifyLiquidityCallback
 } from "@metric-core/interfaces/callbacks/IMetricOmmModifyLiquidityCallback.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
-import {PoolFeeConfig, PoolImmutables} from "@metric-core/types/FactoryStorage.sol";
+import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
@@ -89,6 +89,24 @@ contract MaliciousPoolForRouterTest {
     AMOUNT1_DELTA = amount1Delta;
   }
 
+  function getImmutables() external view returns (PoolImmutables memory) {
+    return PoolImmutables({
+      factory: address(0),
+      token0: TOKEN0,
+      token1: TOKEN1,
+      token0ScaleMultiplier: 1,
+      token1ScaleMultiplier: 1,
+      initialScaledToken0PerShareE18: 1,
+      initialScaledToken1PerShareE18: 1,
+      minimalMintableLiquidity: 1,
+      immutablePriceProvider: address(0),
+      hooks: address(0),
+      hooksPermissions: uint16(0),
+      lowestBin: 0,
+      highestBin: 0
+    });
+  }
+
   function swap(address, bool, int128, uint128, bytes calldata data) external returns (int128, int128) {
     MetricOmmPoolSwapper(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
@@ -97,14 +115,36 @@ contract MaliciousPoolForRouterTest {
 
 /// @notice Pool that tries nested router swap while a swap is in progress.
 contract ReentrantPoolForRouterTest {
+  address public immutable TOKEN0;
+  address public immutable TOKEN1;
   int128 public immutable AMOUNT0_DELTA;
   int128 public immutable AMOUNT1_DELTA;
   bool public nestedAttempted;
   bool public nestedRejectedWithSwapInProgress;
 
-  constructor(int128 amount0Delta, int128 amount1Delta) {
+  constructor(address token0, address token1, int128 amount0Delta, int128 amount1Delta) {
+    TOKEN0 = token0;
+    TOKEN1 = token1;
     AMOUNT0_DELTA = amount0Delta;
     AMOUNT1_DELTA = amount1Delta;
+  }
+
+  function getImmutables() external view returns (PoolImmutables memory) {
+    return PoolImmutables({
+      factory: address(0),
+      token0: TOKEN0,
+      token1: TOKEN1,
+      token0ScaleMultiplier: 1,
+      token1ScaleMultiplier: 1,
+      initialScaledToken0PerShareE18: 1,
+      initialScaledToken1PerShareE18: 1,
+      minimalMintableLiquidity: 1,
+      immutablePriceProvider: address(0),
+      hooks: address(0),
+      hooksPermissions: uint16(0),
+      lowestBin: 0,
+      highestBin: 0
+    });
   }
 
   function swap(address recipient, bool zeroForOne, int128 amountSpecified, uint128, bytes calldata data)
@@ -138,12 +178,6 @@ contract ReentrantPoolForRouterTest {
 contract LiquidityHelper is IMetricOmmModifyLiquidityCallback {
   using SafeERC20 for IERC20;
 
-  address public immutable FACTORY;
-
-  constructor(address factory) {
-    FACTORY = factory;
-  }
-
   function addLiquidityRange(address pool, uint80 salt, int256 lowerBin, int256 upperBin, uint256 sharesPerBin)
     external
   {
@@ -164,7 +198,7 @@ contract LiquidityHelper is IMetricOmmModifyLiquidityCallback {
     external
     override
   {
-    PoolImmutables memory imm = IMetricOmmPoolFactory(FACTORY).poolImmutables(msg.sender);
+    PoolImmutables memory imm = IMetricOmmPool(msg.sender).getImmutables();
     if (amount0Delta > 0) {
       IERC20(imm.token0).safeTransfer(msg.sender, amount0Delta);
     }
@@ -237,20 +271,6 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
 
     factoryStub.registerPool(
       address(pool),
-      PoolImmutables({
-        token0: address(weth),
-        token1: address(token1),
-        immutablePriceProvider: address(oracle),
-        hooks: address(0),
-        hooksPermissions: uint16(0),
-        token0ScaleMultiplier: token0ScaleMultiplier,
-        token1ScaleMultiplier: token1ScaleMultiplier,
-        initialScaledAmount0PerShareE18: INITIAL_TOKEN_0_DENSITY,
-        initialScaledAmount1PerShareE18: INITIAL_TOKEN_1_DENSITY,
-        minimalMintableLiquidity: MINIMAL_MINTABLE_LIQUIDITY,
-        lowestBin: -5,
-        highestBin: 4
-      }),
       PoolFeeConfig({
         protocolSpreadFeeE6: PROTOCOL_FEE, adminSpreadFeeE6: ADMIN_FEE, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0
       }),
@@ -258,9 +278,9 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
       address(this)
     );
 
-    router = new MetricOmmPoolSwapper(address(weth), address(factoryStub));
+    router = new MetricOmmPoolSwapper(address(weth));
 
-    lpContract = new LiquidityHelper(address(factoryStub));
+    lpContract = new LiquidityHelper();
 
     vm.deal(lp, 100 ether);
     vm.startPrank(lp);
@@ -353,27 +373,6 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
 
     MaliciousPoolForRouterTest malicious = new MaliciousPoolForRouterTest(address(weth), address(token1), 0, 1000);
 
-    factoryStub.registerPool(
-      address(malicious),
-      PoolImmutables({
-        token0: address(weth),
-        token1: address(token1),
-        immutablePriceProvider: address(0),
-        hooks: address(0),
-        hooksPermissions: uint16(0),
-        token0ScaleMultiplier: 1,
-        token1ScaleMultiplier: 1,
-        initialScaledAmount0PerShareE18: 1,
-        initialScaledAmount1PerShareE18: 1,
-        minimalMintableLiquidity: 1,
-        lowestBin: 0,
-        highestBin: 0
-      }),
-      PoolFeeConfig({protocolSpreadFeeE6: 0, adminSpreadFeeE6: 0, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0}),
-      address(0),
-      address(0)
-    );
-
     uint256 poolToken1Before = token1.balanceOf(address(malicious));
 
     vm.prank(swapper);
@@ -408,27 +407,7 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
   }
 
   function test_swap_rejectsNestedSwapAndClearsContext() public {
-    ReentrantPoolForRouterTest reentrant = new ReentrantPoolForRouterTest(1000, -1);
-    factoryStub.registerPool(
-      address(reentrant),
-      PoolImmutables({
-        token0: address(weth),
-        token1: address(token1),
-        immutablePriceProvider: address(0),
-        hooks: address(0),
-        hooksPermissions: uint16(0),
-        token0ScaleMultiplier: 1,
-        token1ScaleMultiplier: 1,
-        initialScaledAmount0PerShareE18: 1,
-        initialScaledAmount1PerShareE18: 1,
-        minimalMintableLiquidity: 1,
-        lowestBin: 0,
-        highestBin: 0
-      }),
-      PoolFeeConfig({protocolSpreadFeeE6: 0, adminSpreadFeeE6: 0, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0}),
-      address(0),
-      address(0)
-    );
+    ReentrantPoolForRouterTest reentrant = new ReentrantPoolForRouterTest(address(weth), address(token1), 1000, -1);
 
     vm.prank(swapper);
     (int128 a0, int128 a1) = router.swap(address(reentrant), recipient, true, 1000, 0, type(uint256).max);

@@ -5,8 +5,7 @@ import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
 import {BaseMetricHook} from "../base/BaseMetricHook.sol";
-import {MetricFactorySubhook} from "../base/MetricFactorySubhook.sol";
-import {HookPermissions} from "../libraries/HookPermissions.sol";
+import {SubhookUtils} from "../base/SubhookUtils.sol";
 import {SwapAllowlistSubhook} from "../subhooks/SwapAllowlistSubhook.sol";
 import {DepositAllowlistSubhook} from "../subhooks/DepositAllowlistSubhook.sol";
 import {SwapReporterSubhook} from "../subhooks/SwapReporterSubhook.sol";
@@ -14,7 +13,7 @@ import {SwapReporterSubhook} from "../subhooks/SwapReporterSubhook.sol";
 /// @title StandardMetricHook
 /// @notice Example composed hook: swap allowlist, deposit allowlist, and swap reporting.
 contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllowlistSubhook, SwapReporterSubhook {
-  constructor(address pool_, address factory_) BaseMetricHook(pool_) MetricFactorySubhook(factory_) {}
+  constructor(address pool_, address factory_) BaseMetricHook(pool_) SubhookUtils(factory_) {}
 
   function _hookPool() internal view override returns (address) {
     return pool;
@@ -30,11 +29,8 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
     override(SwapAllowlistSubhook, DepositAllowlistSubhook, SwapReporterSubhook)
     returns (uint16)
   {
-    return HookPermissions.orFlags(
-      SwapAllowlistSubhook.subhookPermissions(),
-      DepositAllowlistSubhook.subhookPermissions(),
-      SwapReporterSubhook.subhookPermissions()
-    );
+    return SwapAllowlistSubhook.subhookPermissions() | DepositAllowlistSubhook.subhookPermissions()
+      | SwapReporterSubhook.subhookPermissions();
   }
 
   function beforeSwap(
@@ -47,7 +43,7 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
     SwapOracleSnapshot calldata,
     bytes calldata
   ) external view override onlyPool returns (bytes4) {
-    _beforeSwapAllowlist(sender);
+    _beforeSwapAllowlist(msg.sender, sender);
     return IMetricOmmHooks.beforeSwap.selector;
   }
 
@@ -58,7 +54,7 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
     onlyPool
     returns (bytes4)
   {
-    _beforeAddLiquidityAllowlist(owner);
+    _beforeAddLiquidityAllowlist(msg.sender, owner);
     return IMetricOmmHooks.beforeAddLiquidity.selector;
   }
 
@@ -77,7 +73,15 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
     bytes calldata
   ) external override onlyPool returns (bytes4) {
     _afterSwapReport(
-      sender, recipient, zeroForOne, amountSpecified, priceLimitX64, packedSlot0Final, amount0Delta, amount1Delta
+      msg.sender,
+      sender,
+      recipient,
+      zeroForOne,
+      amountSpecified,
+      priceLimitX64,
+      packedSlot0Final,
+      amount0Delta,
+      amount1Delta
     );
     return IMetricOmmHooks.afterSwap.selector;
   }
