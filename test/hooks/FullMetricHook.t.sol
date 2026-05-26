@@ -6,7 +6,7 @@ import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IPriceProviderSwapReporter} from "@metric-core/interfaces/IPriceProvider/IPriceProviderSwapReporter.sol";
-import {StandardMetricHook} from "../../contracts/hooks/examples/StandardMetricHook.sol";
+import {FullMetricHook} from "../../contracts/hooks/examples/FullMetricHook.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {TestCaller} from "@metric-core-test/mocks/TestCaller.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -19,9 +19,9 @@ contract MockPriceProviderWithSwapReport is MockPriceProvider, IPriceProviderSwa
   }
 }
 
-contract StandardMetricHookTest is MetricOmmPoolBaseTest {
+contract FullMetricHookTest is MetricOmmPoolBaseTest {
   MockPriceProviderWithSwapReport priceProviderWithReport;
-  StandardMetricHook hook;
+  FullMetricHook hook;
 
   uint72 constant HOOK_TEST_SALT = 777;
 
@@ -43,7 +43,7 @@ contract StandardMetricHookTest is MetricOmmPoolBaseTest {
     uint256 deployNonce = vm.getNonce(address(this));
     address predictedPool = vm.computeCreateAddress(address(this), deployNonce + 1);
 
-    hook = new StandardMetricHook(predictedPool, factory);
+    hook = new FullMetricHook(predictedPool, factory);
 
     pool = _deployPoolWithHook(address(hook), hook.getHookPermissions());
     assertEq(address(pool), predictedPool);
