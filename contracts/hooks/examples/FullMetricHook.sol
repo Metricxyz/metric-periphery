@@ -8,11 +8,21 @@ import {BaseMetricHook} from "../base/BaseMetricHook.sol";
 import {SubhookUtils} from "../base/SubhookUtils.sol";
 import {SwapAllowlistSubhook} from "../subhooks/SwapAllowlistSubhook.sol";
 import {DepositAllowlistSubhook} from "../subhooks/DepositAllowlistSubhook.sol";
+import {PriceVelocityGuardSubhook} from "../subhooks/PriceVelocityGuardSubhook.sol";
 import {SwapReporterSubhook} from "../subhooks/SwapReporterSubhook.sol";
+import {OracleValueStopLossSubhook} from "../subhooks/OracleValueStopLossSubhook.sol";
 
-/// @title StandardMetricHook
-/// @notice Example composed hook: swap allowlist, deposit allowlist, and swap reporting.
-contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllowlistSubhook, SwapReporterSubhook {
+/// @title FullMetricHook
+/// @notice Example composed hook with all available subhooks: swap allowlist, deposit allowlist,
+///         price velocity guard, swap reporting, and oracle-based dual-metric stop-loss protection.
+contract FullMetricHook is
+  BaseMetricHook,
+  SwapAllowlistSubhook,
+  DepositAllowlistSubhook,
+  PriceVelocityGuardSubhook,
+  SwapReporterSubhook,
+  OracleValueStopLossSubhook
+{
   constructor(address pool_, address factory_) BaseMetricHook(pool_) SubhookUtils(factory_) {}
 
   function _hookPool() internal view override returns (address) {
@@ -26,12 +36,21 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
   function subhookPermissions()
     internal
     pure
-    override(SwapAllowlistSubhook, DepositAllowlistSubhook, SwapReporterSubhook)
+    override(
+      SwapAllowlistSubhook,
+      DepositAllowlistSubhook,
+      PriceVelocityGuardSubhook,
+      SwapReporterSubhook,
+      OracleValueStopLossSubhook
+    )
     returns (uint16)
   {
     return SwapAllowlistSubhook.subhookPermissions() | DepositAllowlistSubhook.subhookPermissions()
-      | SwapReporterSubhook.subhookPermissions();
+      | PriceVelocityGuardSubhook.subhookPermissions() | SwapReporterSubhook.subhookPermissions()
+      | OracleValueStopLossSubhook.subhookPermissions();
   }
+
+  // ---- Hook callbacks ----
 
   function beforeSwap(
     address sender,
@@ -40,10 +59,11 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
     int128,
     uint128,
     uint256,
-    SwapOracleSnapshot calldata,
+    SwapOracleSnapshot calldata oracle,
     bytes calldata
-  ) external view override onlyPool returns (bytes4) {
+  ) external override onlyPool returns (bytes4) {
     _beforeSwapAllowlist(msg.sender, sender);
+    _beforeSwapPriceVelocity(msg.sender, oracle);
     return IMetricOmmHooks.beforeSwap.selector;
   }
 
@@ -64,9 +84,9 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
     bool zeroForOne,
     int128 amountSpecified,
     uint128 priceLimitX64,
-    uint256,
+    uint256 packedSlot0Initial,
     uint256 packedSlot0Final,
-    SwapOracleSnapshot calldata,
+    SwapOracleSnapshot calldata oracle,
     int128 amount0Delta,
     int128 amount1Delta,
     uint256,
@@ -83,6 +103,7 @@ contract StandardMetricHook is BaseMetricHook, SwapAllowlistSubhook, DepositAllo
       amount0Delta,
       amount1Delta
     );
+    _afterSwapOracleStopLoss(msg.sender, packedSlot0Initial, packedSlot0Final, oracle);
     return IMetricOmmHooks.afterSwap.selector;
   }
 }
