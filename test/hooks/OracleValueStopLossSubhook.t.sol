@@ -110,14 +110,14 @@ contract OracleValueStopLossSubhookTest is Test {
     harness.setOracleStopLossDrawdown(address(mockPool), 1e6 + 1);
   }
 
-  function test_onlyAdminCanResetWatermarks() public {
+  function test_onlyAdminCanSetWatermarks() public {
     vm.prank(admin);
-    harness.resetOracleStopLossHighWatermarks(address(mockPool), 0);
+    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
 
     address rando = makeAddr("rando");
     vm.prank(rando);
     vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
-    harness.resetOracleStopLossHighWatermarks(address(mockPool), 0);
+    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
   }
 
   // ---- no-op when drawdown is zero ----
@@ -260,9 +260,9 @@ contract OracleValueStopLossSubhookTest is Test {
     assertGt(harness.highWatermarkToken1(address(mockPool), 0), hwm1Before);
   }
 
-  // ---- admin reset allows recovery ----
+  // ---- admin set allows recovery ----
 
-  function test_resetAllowsRecovery() public {
+  function test_adminSetAllowsRecovery() public {
     uint128 price = uint128(Q64);
     _storeBin(0, 1000, 1000, 100);
 
@@ -275,13 +275,15 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.expectRevert();
     harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
 
+    uint128 expectedT0 = uint128(_computeMetricToken0(800, 800, 100, price));
+    uint128 expectedT1 = uint128(_computeMetricToken1(800, 800, 100, price));
     vm.prank(admin);
-    harness.resetOracleStopLossHighWatermarks(address(mockPool), 0);
+    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, expectedT0, expectedT1);
 
     harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
 
-    uint256 expectedT0 = _computeMetricToken0(800, 800, 100, price);
     assertEq(harness.highWatermarkToken0(address(mockPool), 0), expectedT0);
+    assertEq(harness.highWatermarkToken1(address(mockPool), 0), expectedT1);
   }
 
   // ---- skips empty bins ----
@@ -315,9 +317,9 @@ contract OracleValueStopLossSubhookTest is Test {
     harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price1));
     uint256 hwmT0_price1 = harness.highWatermarkToken0(address(mockPool), 0);
 
-    // Reset and use price = 2 token1/token0 (token1 is cheaper)
+    // Clear watermarks and use price = 2 token1/token0 (token1 is cheaper)
     vm.prank(admin);
-    harness.resetOracleStopLossHighWatermarks(address(mockPool), 0);
+    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 0, 0);
 
     uint128 price2 = uint128(2 * Q64);
     harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price2));

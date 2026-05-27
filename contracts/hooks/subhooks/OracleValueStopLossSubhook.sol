@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {MetricHooks} from "@metric-core/libraries/MetricHooks.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
@@ -20,24 +21,38 @@ import {SubhookUtils} from "../base/SubhookUtils.sol";
 ///      Both metrics are tracked independently. A swap is reverted if EITHER drops below its
 ///      respective high watermark by more than the configured drawdown threshold.
 ///
-///      The pool admin is trusted to configure `maxDrawdownE6` and reset watermarks when
-///      legitimate market events make old watermarks stale.
+///      The pool admin can configure `maxDrawdownE6` and set per-bin watermarks when
+///      legitimate market events make automatic tracking stale.
 abstract contract OracleValueStopLossSubhook is SubhookUtils {
+  using SafeCast for uint256;
+
   uint256 private constant Q64 = 1 << 64;
+
+  /// @dev Both metrics packed in one storage slot (uint128 each).
+  struct BinHighWatermark {
+    uint128 token0;
+    uint128 token1;
+  }
 
   mapping(address pool => uint256) public oracleStopLossDrawdownE6;
 
-  mapping(address pool => mapping(int8 binIdx => uint256)) public highWatermarkToken0;
-  mapping(address pool => mapping(int8 binIdx => uint256)) public highWatermarkToken1;
+  mapping(address pool => mapping(int8 binIdx => BinHighWatermark)) internal _highWatermarks;
 
   error OracleStopLossTriggered(int8 binIdx, bool isToken0, uint256 currentMetric, uint256 threshold);
   error OracleStopLossDrawdownTooLarge(uint256 requested);
 
   event OracleStopLossDrawdownSet(address indexed pool, uint256 newMaxDrawdownE6);
-  event OracleStopLossHighWatermarkReset(address indexed pool, int8 binIdx);
   event OracleStopLossHighWatermarkUpdated(
-    address indexed pool, int8 binIdx, uint256 newHwmToken0, uint256 newHwmToken1
+    address indexed pool, int8 binIdx, uint128 newHwmToken0, uint128 newHwmToken1
   );
+
+  function highWatermarkToken0(address pool, int8 binIdx) external view returns (uint256) {
+    return _highWatermarks[pool][binIdx].token0;
+  }
+
+  function highWatermarkToken1(address pool, int8 binIdx) external view returns (uint256) {
+    return _highWatermarks[pool][binIdx].token1;
+  }
 
   function subhookPermissions() internal pure virtual override returns (uint16) {
     return MetricHooks.AFTER_SWAP_FLAG;
@@ -50,11 +65,13 @@ abstract contract OracleValueStopLossSubhook is SubhookUtils {
     emit OracleStopLossDrawdownSet(pool_, newMaxDrawdownE6);
   }
 
-  function resetOracleStopLossHighWatermarks(address pool_, int8 binIdx) external {
+  /// @notice Set or update per-bin high watermarks (e.g. after a market move that would false-trigger stop-loss).
+  function setOracleStopLossHighWatermarks(address pool_, int8 binIdx, uint128 newHwmToken0, uint128 newHwmToken1)
+    external
+  {
     _onlyPoolAdmin(pool_);
-    highWatermarkToken0[pool_][binIdx] = 0;
-    highWatermarkToken1[pool_][binIdx] = 0;
-    emit OracleStopLossHighWatermarkReset(pool_, binIdx);
+    _highWatermarks[pool_][binIdx] = BinHighWatermark({token0: newHwmToken0, token1: newHwmToken1});
+    emit OracleStopLossHighWatermarkUpdated(pool_, binIdx, newHwmToken0, newHwmToken1);
   }
 
   /// @dev Called from the composed hook's `afterSwap` override.
@@ -101,30 +118,50 @@ abstract contract OracleValueStopLossSubhook is SubhookUtils {
       uint256 metricT0 = token0PerShareE18 + Math.mulDiv(token1PerShareE18, Q64, midPriceX64);
       uint256 metricT1 = Math.mulDiv(token0PerShareE18, midPriceX64, Q64) + token1PerShareE18;
 
-      _checkAndUpdateWatermark(pool_, binIdxs[i], true, metricT0, highWatermarkToken0, floorMultiplier);
-      _checkAndUpdateWatermark(pool_, binIdxs[i], false, metricT1, highWatermarkToken1, floorMultiplier);
+      _checkAndUpdateWatermarks(pool_, binIdxs[i], metricT0, metricT1, floorMultiplier);
     }
   }
 
-  function _checkAndUpdateWatermark(
+  function _checkAndUpdateWatermarks(
     address pool_,
     int8 binIdx,
-    bool isToken0,
-    uint256 metric,
-    mapping(address => mapping(int8 => uint256)) storage hwmMapping,
+    uint256 metricT0,
+    uint256 metricT1,
     uint256 floorMultiplier
   ) private {
-    uint256 hwm = hwmMapping[pool_][binIdx];
+    uint128 metric0 = metricT0.toUint128();
+    uint128 metric1 = metricT1.toUint128();
 
-    if (metric >= hwm) {
-      if (metric > hwm) {
-        hwmMapping[pool_][binIdx] = metric;
-      }
-    } else {
-      uint256 threshold = hwm * floorMultiplier / 1e6;
-      if (metric < threshold) {
-        revert OracleStopLossTriggered(binIdx, isToken0, metric, threshold);
-      }
+    BinHighWatermark storage hwm = _highWatermarks[pool_][binIdx];
+    uint128 hwm0 = hwm.token0;
+    uint128 hwm1 = hwm.token1;
+
+    (hwm0, hwm1) =
+    (
+      _applyWatermark(binIdx, true, metric0, hwm0, floorMultiplier),
+      _applyWatermark(binIdx, false, metric1, hwm1, floorMultiplier)
+    );
+
+    if (hwm.token0 != hwm0 || hwm.token1 != hwm1) {
+      hwm.token0 = hwm0;
+      hwm.token1 = hwm1;
     }
+  }
+
+  function _applyWatermark(int8 binIdx, bool isToken0, uint128 metric, uint128 hwm, uint256 floorMultiplier)
+    private
+    pure
+    returns (uint128 newHwm)
+  {
+    if (metric >= hwm) {
+      return metric > hwm ? metric : hwm;
+    }
+
+    uint256 threshold = uint256(hwm) * floorMultiplier / 1e6;
+    if (metric < threshold) {
+      revert OracleStopLossTriggered(binIdx, isToken0, metric, threshold);
+    }
+
+    return hwm;
   }
 }
