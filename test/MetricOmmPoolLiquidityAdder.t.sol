@@ -171,7 +171,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     uint256 t1Before = token1.balanceOf(alice);
 
     vm.prank(alice);
-    (uint256 a0, uint256 a1) = helper.addLiquidityExactShares(address(pool), alice, 1, d, 1_000 ether, 1_000 ether);
+    (uint256 a0, uint256 a1) = helper.addLiquidityExactShares(address(pool), alice, 1, d, 1_000 ether, 1_000 ether, "");
 
     assertGt(a0 + a1, 0);
     assertLe(wethBefore - weth.balanceOf(alice), 1_000 ether);
@@ -183,7 +183,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
     vm.prank(alice);
     (uint256 need0, uint256 need1) =
-      helper.addLiquidityExactShares(address(pool), alice, 7, d, type(uint256).max, type(uint256).max);
+      helper.addLiquidityExactShares(address(pool), alice, 7, d, type(uint256).max, type(uint256).max, "");
 
     uint256 tight0 = need0 > 0 ? need0 - 1 : type(uint256).max;
     uint256 tight1 = need1 > 0 ? need1 - 1 : type(uint256).max;
@@ -192,7 +192,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     vm.expectRevert(
       abi.encodeWithSelector(IMetricOmmPoolLiquidityAdder.MaxAmountExceeded.selector, need0, need1, tight0, tight1)
     );
-    helper.addLiquidityExactShares(address(pool), alice, 8, d, tight0, tight1);
+    helper.addLiquidityExactShares(address(pool), alice, 8, d, tight0, tight1, "");
   }
 
   function test_exactShares_canAddOnBehalfOfAnotherOwner() public {
@@ -200,7 +200,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     address bob = makeAddr("bob");
 
     vm.prank(alice);
-    helper.addLiquidityExactShares(address(pool), bob, 1, d, type(uint256).max, type(uint256).max);
+    helper.addLiquidityExactShares(address(pool), bob, 1, d, type(uint256).max, type(uint256).max, "");
 
     uint256 bobShares = stateView.positionBinShares(address(pool), bob, 1, int8(4));
     assertGt(bobShares, 0);
@@ -213,7 +213,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
     vm.prank(alice);
     vm.expectRevert(IMetricOmmPoolLiquidityAdder.EmptyLiquidityDelta.selector);
-    helper.addLiquidityExactShares(address(pool), alice, 10, d, type(uint256).max, type(uint256).max);
+    helper.addLiquidityExactShares(address(pool), alice, 10, d, type(uint256).max, type(uint256).max, "");
   }
 
   function test_exactShares_revertsOnZeroOwner() public {
@@ -221,7 +221,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
     vm.prank(alice);
     vm.expectRevert(IMetricOmmPoolLiquidityAdder.InvalidPositionOwner.selector);
-    helper.addLiquidityExactShares(address(pool), address(0), 11, d, type(uint256).max, type(uint256).max);
+    helper.addLiquidityExactShares(address(pool), address(0), 11, d, type(uint256).max, type(uint256).max, "");
   }
 
   function test_exactShares_usesMsgSenderAsPayerNotOwner() public {
@@ -232,7 +232,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     uint256 bobWethBefore = weth.balanceOf(bob);
 
     vm.prank(alice);
-    helper.addLiquidityExactShares(address(pool), bob, 12, d, type(uint256).max, type(uint256).max);
+    helper.addLiquidityExactShares(address(pool), bob, 12, d, type(uint256).max, type(uint256).max, "");
 
     uint256 bobShares = stateView.positionBinShares(address(pool), bob, 12, int8(4));
     assertGt(bobShares, 0);
@@ -244,7 +244,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     LiquidityDelta memory d = _deltaAbovePrice(4, 12_000);
 
     vm.prank(alice);
-    helper.addLiquidityExactShares(address(pool), 9, d, type(uint256).max, type(uint256).max);
+    helper.addLiquidityExactShares(address(pool), 9, d, type(uint256).max, type(uint256).max, "");
 
     uint256 aliceShares = stateView.positionBinShares(address(pool), alice, 9, int8(4));
     assertGt(aliceShares, 0);
@@ -254,7 +254,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     LiquidityDelta memory w = _deltaAbovePrice(4, 5_000_000);
 
     vm.prank(alice);
-    (uint256 a0, uint256 a1) = helper.addLiquidityWeighted(address(pool), alice, 2, w, 50_000, 50_000);
+    (uint256 a0, uint256 a1) = helper.addLiquidityWeighted(address(pool), alice, 2, w, 50_000, 50_000, "");
 
     assertLe(a0, 50_000);
     assertLe(a1, 50_000);
@@ -265,7 +265,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     LiquidityDelta memory w = _deltaTwoBins(3, 400_000, 4, 100_000);
 
     vm.prank(alice);
-    helper.addLiquidityWeighted(address(pool), alice, 3, w, 30_000, 30_000);
+    helper.addLiquidityWeighted(address(pool), alice, 3, w, 30_000, 30_000, "");
 
     uint256 s3 = stateView.positionBinShares(address(pool), alice, 3, int8(3));
     uint256 s4 = stateView.positionBinShares(address(pool), alice, 3, int8(4));
@@ -278,7 +278,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     LiquidityDelta memory w = _deltaAbovePrice(2, 0);
     vm.prank(alice);
     vm.expectRevert(IMetricOmmPoolLiquidityAdder.ZeroWeight.selector);
-    helper.addLiquidityWeighted(address(pool), alice, 4, w, type(uint256).max, type(uint256).max);
+    helper.addLiquidityWeighted(address(pool), alice, 4, w, type(uint256).max, type(uint256).max, "");
   }
 
   function test_weighted_canAddOnBehalfOfAnotherOwner() public {
@@ -287,7 +287,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     uint256 cap = 50_000;
 
     vm.prank(alice);
-    helper.addLiquidityWeighted(address(pool), bob, 5, w, cap, cap);
+    helper.addLiquidityWeighted(address(pool), bob, 5, w, cap, cap, "");
 
     uint256 bobShares = stateView.positionBinShares(address(pool), bob, 5, int8(4));
     assertGt(bobShares, 0);

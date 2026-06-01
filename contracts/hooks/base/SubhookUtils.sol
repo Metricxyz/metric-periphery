@@ -19,14 +19,6 @@ abstract contract SubhookUtils {
   /// @notice Permission flags required by this subhook (`MetricHooks.*_FLAG`).
   function subhookPermissions() internal pure virtual returns (uint16);
 
-  /// @dev Implement in composed hooks that inherit `BaseMetricHook`.
-  function _hookPool() internal view virtual returns (address);
-
-  function _onlyPoolAdmin() internal view {
-    address pool_ = _hookPool();
-    _onlyPoolAdmin(pool_);
-  }
-
   function _onlyPoolAdmin(address pool_) internal view {
     address poolAdmin = IMetricOmmPoolFactory(FACTORY).poolAdmin(pool_);
     if (msg.sender != poolAdmin) revert OnlyPoolAdmin(pool_, msg.sender, poolAdmin);

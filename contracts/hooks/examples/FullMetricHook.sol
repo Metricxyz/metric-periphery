@@ -3,7 +3,6 @@ pragma solidity ^0.8.35;
 
 import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
-import {SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
 import {BaseMetricHook} from "../base/BaseMetricHook.sol";
 import {SubhookUtils} from "../base/SubhookUtils.sol";
 import {SwapAllowlistSubhook} from "../subhooks/SwapAllowlistSubhook.sol";
@@ -23,11 +22,7 @@ contract FullMetricHook is
   SwapReporterSubhook,
   OracleValueStopLossSubhook
 {
-  constructor(address pool_, address factory_) BaseMetricHook(pool_) SubhookUtils(factory_) {}
-
-  function _hookPool() internal view override returns (address) {
-    return pool;
-  }
+  constructor(address factory_) BaseMetricHook(factory_) {}
 
   function getHookPermissions() external pure override returns (uint16) {
     return subhookPermissions();
@@ -37,6 +32,7 @@ contract FullMetricHook is
     internal
     pure
     override(
+      SubhookUtils,
       SwapAllowlistSubhook,
       DepositAllowlistSubhook,
       PriceVelocityGuardSubhook,
@@ -59,11 +55,12 @@ contract FullMetricHook is
     int128,
     uint128,
     uint256,
-    SwapOracleSnapshot calldata oracle,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
     bytes calldata
   ) external override onlyPool returns (bytes4) {
     _beforeSwapAllowlist(msg.sender, sender);
-    _beforeSwapPriceVelocity(msg.sender, oracle);
+    _beforeSwapPriceVelocity(msg.sender, bidPriceX64, askPriceX64);
     return IMetricOmmHooks.beforeSwap.selector;
   }
 
@@ -86,7 +83,8 @@ contract FullMetricHook is
     uint128 priceLimitX64,
     uint256 packedSlot0Initial,
     uint256 packedSlot0Final,
-    SwapOracleSnapshot calldata oracle,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
     int128 amount0Delta,
     int128 amount1Delta,
     uint256,
@@ -103,7 +101,7 @@ contract FullMetricHook is
       amount0Delta,
       amount1Delta
     );
-    _afterSwapOracleStopLoss(msg.sender, packedSlot0Initial, packedSlot0Final, oracle);
+    _afterSwapOracleStopLoss(msg.sender, packedSlot0Initial, packedSlot0Final, bidPriceX64, askPriceX64);
     return IMetricOmmHooks.afterSwap.selector;
   }
 }

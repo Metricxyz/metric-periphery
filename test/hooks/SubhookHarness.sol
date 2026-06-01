@@ -2,16 +2,15 @@
 pragma solidity ^0.8.35;
 
 import {BaseMetricHook} from "../../contracts/hooks/base/BaseMetricHook.sol";
-import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
 import {SwapAllowlistSubhook} from "../../contracts/hooks/subhooks/SwapAllowlistSubhook.sol";
 import {DepositAllowlistSubhook} from "../../contracts/hooks/subhooks/DepositAllowlistSubhook.sol";
 import {SwapReporterSubhook} from "../../contracts/hooks/subhooks/SwapReporterSubhook.sol";
 
 contract SwapAllowlistSubhookHarness is BaseMetricHook, SwapAllowlistSubhook {
-  constructor(address pool, address factory) BaseMetricHook(pool) SubhookUtils(factory) {}
+  address public testPool;
 
-  function _hookPool() internal view override returns (address) {
-    return pool;
+  constructor(address pool_, address factory_) BaseMetricHook(factory_) {
+    testPool = pool_;
   }
 
   function getHookPermissions() external pure override returns (uint16) {
@@ -19,15 +18,15 @@ contract SwapAllowlistSubhookHarness is BaseMetricHook, SwapAllowlistSubhook {
   }
 
   function exposeBeforeSwapAllowlist(address swapper) external view {
-    _beforeSwapAllowlist(pool, swapper);
+    _beforeSwapAllowlist(testPool, swapper);
   }
 }
 
 contract DepositAllowlistSubhookHarness is BaseMetricHook, DepositAllowlistSubhook {
-  constructor(address pool, address factory) BaseMetricHook(pool) SubhookUtils(factory) {}
+  address public testPool;
 
-  function _hookPool() internal view override returns (address) {
-    return pool;
+  constructor(address pool_, address factory_) BaseMetricHook(factory_) {
+    testPool = pool_;
   }
 
   function getHookPermissions() external pure override returns (uint16) {
@@ -35,17 +34,16 @@ contract DepositAllowlistSubhookHarness is BaseMetricHook, DepositAllowlistSubho
   }
 
   function exposeBeforeAddLiquidityAllowlist(address owner) external view {
-    _beforeAddLiquidityAllowlist(pool, owner);
+    _beforeAddLiquidityAllowlist(testPool, owner);
   }
 }
 
 contract SwapReporterSubhookHarness is BaseMetricHook, SwapReporterSubhook {
+  address public testPool;
   address public priceProviderOverride;
 
-  constructor(address pool, address factory) BaseMetricHook(pool) SubhookUtils(factory) {}
-
-  function _hookPool() internal view override returns (address) {
-    return pool;
+  constructor(address pool_, address factory_) BaseMetricHook(factory_) {
+    testPool = pool_;
   }
 
   function setPriceProviderOverride(address priceProvider) external {
@@ -71,7 +69,15 @@ contract SwapReporterSubhookHarness is BaseMetricHook, SwapReporterSubhook {
     int128 amount1Delta
   ) external {
     _afterSwapReport(
-      pool, sender, recipient, zeroForOne, amountSpecified, priceLimitX64, packedSlot0Final, amount0Delta, amount1Delta
+      testPool,
+      sender,
+      recipient,
+      zeroForOne,
+      amountSpecified,
+      priceLimitX64,
+      packedSlot0Final,
+      amount0Delta,
+      amount1Delta
     );
   }
 }

@@ -107,8 +107,12 @@ contract MaliciousPoolForRouterTest {
     });
   }
 
-  function swap(address, bool, int128, uint128, bytes calldata data) external returns (int128, int128) {
-    MetricOmmPoolSwapper(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
+  function swap(address, bool, int128, uint128, bytes calldata callbackData, bytes calldata)
+    external
+    returns (int128, int128)
+  {
+    MetricOmmPoolSwapper(payable(msg.sender))
+      .metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), callbackData);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
   }
 }
@@ -147,10 +151,14 @@ contract ReentrantPoolForRouterTest {
     });
   }
 
-  function swap(address recipient, bool zeroForOne, int128 amountSpecified, uint128, bytes calldata data)
-    external
-    returns (int128, int128)
-  {
+  function swap(
+    address recipient,
+    bool zeroForOne,
+    int128 amountSpecified,
+    uint128,
+    bytes calldata callbackData,
+    bytes calldata
+  ) external returns (int128, int128) {
     nestedAttempted = true;
     try MetricOmmPoolSwapper(payable(msg.sender))
       .swap(
@@ -160,7 +168,7 @@ contract ReentrantPoolForRouterTest {
         amountSpecified,
         zeroForOne ? uint128(0) : type(uint128).max,
         type(uint256).max,
-        data
+        callbackData
       ) {
       revert("nested-swap-should-revert");
     } catch (bytes memory reason) {
@@ -169,7 +177,8 @@ contract ReentrantPoolForRouterTest {
       }
     }
 
-    MetricOmmPoolSwapper(payable(msg.sender)).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), data);
+    MetricOmmPoolSwapper(payable(msg.sender))
+      .metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), callbackData);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
   }
 }
@@ -191,7 +200,7 @@ contract LiquidityHelper is IMetricOmmModifyLiquidityCallback {
       shares[i] = sharesPerBin;
     }
     LiquidityDelta memory deltas = LiquidityDelta({binIdxs: binIdxs, shares: shares});
-    IMetricOmmPoolActions(pool).addLiquidity(address(this), salt, deltas, "");
+    IMetricOmmPoolActions(pool).addLiquidity(address(this), salt, deltas, "", "");
   }
 
   function metricOmmModifyLiquidityCallback(uint256 amount0Delta, uint256 amount1Delta, bytes calldata)

@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
 import {BaseMetricHook} from "../../contracts/hooks/base/BaseMetricHook.sol";
-import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
 import {OracleValueStopLossSubhook} from "../../contracts/hooks/subhooks/OracleValueStopLossSubhook.sol";
 
 contract OracleValueStopLossSubhookHarness is BaseMetricHook, OracleValueStopLossSubhook {
-  constructor(address pool_, address factory_) BaseMetricHook(pool_) SubhookUtils(factory_) {}
+  address public testPool;
 
-  function _hookPool() internal view override returns (address) {
-    return pool;
+  constructor(address pool_, address factory_) BaseMetricHook(factory_) {
+    testPool = pool_;
   }
 
   function getHookPermissions() external pure override returns (uint16) {
@@ -20,8 +18,9 @@ contract OracleValueStopLossSubhookHarness is BaseMetricHook, OracleValueStopLos
   function exposeAfterSwapOracleStopLoss(
     uint256 packedSlot0Initial,
     uint256 packedSlot0Final,
-    SwapOracleSnapshot calldata oracle
+    uint128 bidPriceX64,
+    uint128 askPriceX64
   ) external {
-    _afterSwapOracleStopLoss(pool, packedSlot0Initial, packedSlot0Final, oracle);
+    _afterSwapOracleStopLoss(testPool, packedSlot0Initial, packedSlot0Final, bidPriceX64, askPriceX64);
   }
 }

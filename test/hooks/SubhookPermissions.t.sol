@@ -7,7 +7,7 @@ import {FullMetricHook} from "../../contracts/hooks/examples/FullMetricHook.sol"
 
 contract SubhookPermissionsTest is Test {
   function test_fullMetricHook_orCombinesSubhookPermissions() public {
-    FullMetricHook hook = new FullMetricHook(makeAddr("pool"), makeAddr("factory"));
+    FullMetricHook hook = new FullMetricHook(makeAddr("factory"));
 
     uint16 expected = MetricHooks.BEFORE_SWAP_FLAG | MetricHooks.BEFORE_ADD_LIQUIDITY_FLAG | MetricHooks.AFTER_SWAP_FLAG;
     assertEq(hook.getHookPermissions(), expected);

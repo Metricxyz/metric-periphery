@@ -46,11 +46,12 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint80 salt,
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateOwner(owner);
     _validateDeltas(deltas);
-    return _addLiquidity(pool, owner, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1);
+    return _addLiquidity(pool, owner, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, hookData);
   }
 
   /// @notice Add liquidity with explicit per-bin shares for `msg.sender`.
@@ -59,10 +60,11 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint80 salt,
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateDeltas(deltas);
-    return _addLiquidity(pool, msg.sender, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1);
+    return _addLiquidity(pool, msg.sender, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, hookData);
   }
 
   /// @notice Add liquidity from a weight vector (used as provisional shares for a probe), then rescale shares by
@@ -75,20 +77,21 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint80 salt,
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateOwner(owner);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
 
-    try IMetricOmmPoolActions(pool).addLiquidity(owner, salt, weightDeltas, abi.encode(KIND_PROBE)) returns (
+    try IMetricOmmPoolActions(pool).addLiquidity(owner, salt, weightDeltas, abi.encode(KIND_PROBE), hookData) returns (
       uint256, uint256
     ) {
       revert WeightedProbeInconclusive();
     } catch (bytes memory reason) {
       (uint256 need0, uint256 need1) = _decodeLiquidityProbeOrBubble(reason);
       LiquidityDelta memory scaled = _scaleWeightsToShares(weightDeltas, maxAmountToken0, maxAmountToken1, need0, need1);
-      return _addLiquidity(pool, owner, salt, scaled, msg.sender, maxAmountToken0, maxAmountToken1);
+      return _addLiquidity(pool, owner, salt, scaled, msg.sender, maxAmountToken0, maxAmountToken1, hookData);
     }
   }
 
@@ -101,28 +104,30 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint80 salt,
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
 
-    try IMetricOmmPoolActions(pool).addLiquidity(msg.sender, salt, weightDeltas, abi.encode(KIND_PROBE)) returns (
+    try IMetricOmmPoolActions(pool)
+      .addLiquidity(msg.sender, salt, weightDeltas, abi.encode(KIND_PROBE), hookData) returns (
       uint256, uint256
     ) {
       revert WeightedProbeInconclusive();
     } catch (bytes memory reason) {
       (uint256 need0, uint256 need1) = _decodeLiquidityProbeOrBubble(reason);
       LiquidityDelta memory scaled = _scaleWeightsToShares(weightDeltas, maxAmountToken0, maxAmountToken1, need0, need1);
-      return _addLiquidity(pool, msg.sender, salt, scaled, msg.sender, maxAmountToken0, maxAmountToken1);
+      return _addLiquidity(pool, msg.sender, salt, scaled, msg.sender, maxAmountToken0, maxAmountToken1, hookData);
     }
   }
 
   /// @notice Callback settlement for probe/pay modes invoked by pool during `addLiquidity`.
-  function metricOmmModifyLiquidityCallback(uint256 amount0Delta, uint256 amount1Delta, bytes calldata data)
+  function metricOmmModifyLiquidityCallback(uint256 amount0Delta, uint256 amount1Delta, bytes calldata callbackData)
     external
     override
   {
-    uint8 kind = abi.decode(data, (uint8));
+    uint8 kind = abi.decode(callbackData, (uint8));
     if (kind == KIND_PROBE) {
       revert LiquidityProbe(amount0Delta, amount1Delta);
     }
@@ -156,10 +161,11 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     LiquidityDelta memory deltas,
     address payer,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) internal returns (uint256 amount0Added, uint256 amount1Added) {
     _setPayContext(pool, payer, maxAmountToken0, maxAmountToken1);
-    try IMetricOmmPoolActions(pool).addLiquidity(positionOwner, salt, deltas, abi.encode(KIND_PAY)) returns (
+    try IMetricOmmPoolActions(pool).addLiquidity(positionOwner, salt, deltas, abi.encode(KIND_PAY), hookData) returns (
       uint256 a0, uint256 a1
     ) {
       amount0Added = a0;
