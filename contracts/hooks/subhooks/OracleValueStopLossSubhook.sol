@@ -6,7 +6,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {MetricHooks} from "@metric-core/libraries/MetricHooks.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
-import {PoolSlot0, SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
+import {PoolSlot0} from "@metric-core/types/HookTypes.sol";
 import {SubhookUtils} from "../base/SubhookUtils.sol";
 
 /// @title OracleValueStopLossSubhook
@@ -79,12 +79,13 @@ abstract contract OracleValueStopLossSubhook is SubhookUtils {
     address pool_,
     uint256 packedSlot0Initial,
     uint256 packedSlot0Final,
-    SwapOracleSnapshot calldata oracle
+    uint128 bidPriceX64,
+    uint128 askPriceX64
   ) internal {
     uint256 drawdown = oracleStopLossDrawdownE6[pool_];
     if (drawdown == 0) return;
 
-    uint256 midPriceX64 = (uint256(oracle.bidPriceX64) + uint256(oracle.askPriceX64)) / 2;
+    uint256 midPriceX64 = (uint256(bidPriceX64) + uint256(askPriceX64)) / 2;
 
     PoolSlot0 memory s0 = Slot0Library.unpack(packedSlot0Initial);
     PoolSlot0 memory s1 = Slot0Library.unpack(packedSlot0Final);

@@ -6,7 +6,6 @@ import {Test} from "forge-std/Test.sol";
 import {Extsload} from "@metric-core/Extsload.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
-import {SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
 import {OracleValueStopLossSubhook} from "../../contracts/hooks/subhooks/OracleValueStopLossSubhook.sol";
 import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
@@ -66,9 +65,8 @@ contract OracleValueStopLossSubhookTest is Test {
     return Slot0Library.pack(0, binIdx, 0, 0, 0, 0);
   }
 
-  /// @dev Oracle with equal bid/ask so midPrice = price. Price is in Q64.64 (token1-per-token0).
-  function _oracle(uint128 priceX64) internal pure returns (SwapOracleSnapshot memory) {
-    return SwapOracleSnapshot({bidPriceX64: priceX64, askPriceX64: priceX64});
+  function _exposeStopLoss(int8 loBin, int8 hiBin, uint128 priceX64) internal {
+    harness.exposeAfterSwapOracleStopLoss(_packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64);
   }
 
   function _computeMetricToken0(uint104 t0, uint104 t1, uint256 shares, uint128 midX64)
@@ -124,7 +122,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
   function test_noOpWhenDrawdownNotConfigured() public {
     _storeBin(0, 1000, 1000, 100);
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(uint128(Q64)));
+    _exposeStopLoss(0, 0, uint128(Q64));
   }
 
   // ---- sets both watermarks on first swap ----
@@ -140,7 +138,7 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     assertEq(harness.highWatermarkToken0(address(mockPool), 0), _computeMetricToken0(t0, t1, shares, price));
     assertEq(harness.highWatermarkToken1(address(mockPool), 0), _computeMetricToken1(t0, t1, shares, price));
@@ -155,11 +153,11 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 100_000); // 10%
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     // Drop by 5% (within 10% threshold)
     _storeBin(0, 950, 950, 100);
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
   }
 
   // ---- large drawdown in token0 value reverts ----
@@ -171,7 +169,7 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000); // 5%
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     // Drop token0 heavily, token1 stays -- token0-denominated value drops
     _storeBin(0, 800, 1000, 100);
@@ -185,7 +183,7 @@ contract OracleValueStopLossSubhookTest is Test {
         OracleValueStopLossSubhook.OracleStopLossTriggered.selector, int8(0), true, curT0, threshold
       )
     );
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
   }
 
   // ---- large drawdown in token1 value reverts (token0 metric stays within threshold) ----
@@ -199,7 +197,7 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000); // 5%
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     // Drop token1 by ~6% (60 units): token0 metric drops ~5.5%, token1 metric drops ~5.5%.
     // But let's make it asymmetric so only token1 breaches: add a bit of token0 to compensate.
@@ -219,7 +217,7 @@ contract OracleValueStopLossSubhookTest is Test {
         OracleValueStopLossSubhook.OracleStopLossTriggered.selector, int8(0), true, curT0, threshold
       )
     );
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
   }
 
   // ---- multi-bin: checks all touched bins ----
@@ -232,7 +230,7 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(1), _oracle(price));
+    _exposeStopLoss(0, 1, price);
 
     uint256 expectedT0 = _computeMetricToken0(1000, 1000, 100, price);
     assertEq(harness.highWatermarkToken0(address(mockPool), 0), expectedT0);
@@ -248,13 +246,13 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
     uint256 hwm0Before = harness.highWatermarkToken0(address(mockPool), 0);
     uint256 hwm1Before = harness.highWatermarkToken1(address(mockPool), 0);
 
     // Increase reserves
     _storeBin(0, 600, 600, 100);
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     assertGt(harness.highWatermarkToken0(address(mockPool), 0), hwm0Before);
     assertGt(harness.highWatermarkToken1(address(mockPool), 0), hwm1Before);
@@ -269,18 +267,18 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     _storeBin(0, 800, 800, 100);
     vm.expectRevert();
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     uint128 expectedT0 = uint128(_computeMetricToken0(800, 800, 100, price));
     uint128 expectedT1 = uint128(_computeMetricToken1(800, 800, 100, price));
     vm.prank(admin);
     harness.setOracleStopLossHighWatermarks(address(mockPool), 0, expectedT0, expectedT1);
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     assertEq(harness.highWatermarkToken0(address(mockPool), 0), expectedT0);
     assertEq(harness.highWatermarkToken1(address(mockPool), 0), expectedT1);
@@ -297,7 +295,7 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(2), _oracle(price));
+    _exposeStopLoss(0, 2, price);
 
     assertGt(harness.highWatermarkToken0(address(mockPool), 0), 0);
     assertEq(harness.highWatermarkToken0(address(mockPool), 1), 0);
@@ -314,7 +312,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     // Price = 1 token1/token0
     uint128 price1 = uint128(Q64);
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price1));
+    _exposeStopLoss(0, 0, price1);
     uint256 hwmT0_price1 = harness.highWatermarkToken0(address(mockPool), 0);
 
     // Clear watermarks and use price = 2 token1/token0 (token1 is cheaper)
@@ -322,7 +320,7 @@ contract OracleValueStopLossSubhookTest is Test {
     harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 0, 0);
 
     uint128 price2 = uint128(2 * Q64);
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price2));
+    _exposeStopLoss(0, 0, price2);
     uint256 hwmT0_price2 = harness.highWatermarkToken0(address(mockPool), 0);
 
     // At price=2, token1 is worth less in token0 terms, so token0-denominated metric is lower
@@ -338,10 +336,10 @@ contract OracleValueStopLossSubhookTest is Test {
     vm.prank(admin);
     harness.setOracleStopLossDrawdown(address(mockPool), 100_000); // 10%
 
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
 
     // Drop exactly 10%: metric = threshold, should NOT revert
     _storeBin(0, 900, 900, 100);
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(0), _packSlot0(0), _oracle(price));
+    _exposeStopLoss(0, 0, price);
   }
 }

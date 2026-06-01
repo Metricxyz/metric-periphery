@@ -58,15 +58,6 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   // ============ Mutating: Spot Swap ============
 
   /// @notice Execute a direct pool swap using swapper callback settlement.
-  /// @dev Convenience overload equivalent to calling the data variant with empty `data`.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of output token.
-  /// @param zeroForOne Swap direction (`true`: token0 -> token1, `false`: token1 -> token0).
-  /// @param amountSpecified Signed amount semantics from core (`>0` exact input, `<0` exact output).
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amount0Delta Net token0 delta from pool perspective.
-  /// @return amount1Delta Net token1 delta from pool perspective.
   function swap(
     address pool,
     address recipient,
@@ -77,17 +68,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   ) external payable returns (int128 amount0Delta, int128 amount1Delta);
 
   /// @notice Execute a direct pool swap with custom callback data.
-  /// @dev This is the canonical low-level swap entrypoint. Swapper enforces deadline, directional price-limit
-  ///      sentinels, and specified-side delta equality with `amountSpecified`.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of output token.
-  /// @param zeroForOne Swap direction (`true`: token0 -> token1, `false`: token1 -> token0).
-  /// @param amountSpecified Signed amount semantics from core (`>0` exact input, `<0` exact output).
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @param data Opaque callback data forwarded into pool callback flow.
-  /// @return amount0Delta Net token0 delta from pool perspective.
-  /// @return amount1Delta Net token1 delta from pool perspective.
+  /// @dev Pass empty `data` and non-empty `hookData` to forward only hook data.
   function swap(
     address pool,
     address recipient,
@@ -98,18 +79,21 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     bytes memory data
   ) external payable returns (int128 amount0Delta, int128 amount1Delta);
 
+  /// @notice Execute a direct pool swap with custom callback data and hook data.
+  function swap(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    int128 amountSpecified,
+    uint128 priceLimitX64,
+    uint256 deadline,
+    bytes memory data,
+    bytes calldata hookData
+  ) external payable returns (int128 amount0Delta, int128 amount1Delta);
+
   // ============ Mutating: Token Swap ============
 
   /// @notice Swap exact token input for token output.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of output token.
-  /// @param zeroForOne Swap direction (`true`: token0 input, `false`: token1 input).
-  /// @param amountIn Exact input amount.
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param minAmountOut Minimum acceptable output amount.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amountOut Output amount received.
-  /// @return amountInUsed Actual input consumed (can be lower than `amountIn` near price limits).
   function swapExactInput(
     address pool,
     address recipient,
@@ -120,16 +104,19 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
+  /// @notice Swap exact token input for token output, forwarding hook data to pool hooks.
+  function swapExactInput(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64,
+    uint256 minAmountOut,
+    uint256 deadline,
+    bytes calldata hookData
+  ) external payable returns (uint256 amountOut, uint256 amountInUsed);
+
   /// @notice Swap token input for exact token output target.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of output token.
-  /// @param zeroForOne Swap direction (`true`: token0 input, `false`: token1 input).
-  /// @param amountOutDesired Exact output target.
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param maxAmountIn Maximum acceptable input spend.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amountOut Output amount produced (expected to equal `amountOutDesired`).
-  /// @return amountInUsed Input amount consumed.
   function swapExactOutput(
     address pool,
     address recipient,
@@ -140,19 +127,21 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
+  /// @notice Swap token input for exact token output target, forwarding hook data to pool hooks.
+  function swapExactOutput(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint256 maxAmountIn,
+    uint256 deadline,
+    bytes calldata hookData
+  ) external payable returns (uint256 amountOut, uint256 amountInUsed);
+
   // ============ Mutating: Native <-> Token Swap ============
 
   /// @notice Swap exact native ETH input for token output.
-  /// @dev Native input is wrapped into WETH inside callback settlement.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of output token.
-  /// @param zeroForOne Swap direction where the input side must be WETH.
-  /// @param amountIn Exact native input amount.
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param minAmountOut Minimum acceptable token output.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amountOut Output token amount received.
-  /// @return amountInUsed Native input consumed.
   function swapExactInputNativeForTokens(
     address pool,
     address recipient,
@@ -163,16 +152,19 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
+  /// @notice Swap exact native ETH input for token output, forwarding hook data to pool hooks.
+  function swapExactInputNativeForTokens(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64,
+    uint256 minAmountOut,
+    uint256 deadline,
+    bytes calldata hookData
+  ) external payable returns (uint256 amountOut, uint256 amountInUsed);
+
   /// @notice Swap native ETH (bounded by `maxAmountIn`) for exact token output.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of output token.
-  /// @param zeroForOne Swap direction where the input side must be WETH.
-  /// @param amountOutDesired Exact output target.
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param maxAmountIn Maximum native ETH spend.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amountOut Output token amount produced.
-  /// @return amountInUsed Native input consumed.
   function swapExactOutputNativeForTokens(
     address pool,
     address recipient,
@@ -183,17 +175,19 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
+  /// @notice Swap native ETH for exact token output, forwarding hook data to pool hooks.
+  function swapExactOutputNativeForTokens(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint256 maxAmountIn,
+    uint256 deadline,
+    bytes calldata hookData
+  ) external payable returns (uint256 amountOut, uint256 amountInUsed);
+
   /// @notice Swap exact token input for native ETH output.
-  /// @dev Output leg is received as WETH then unwrapped and forwarded as native ETH.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of native ETH.
-  /// @param zeroForOne Swap direction where the output side must be WETH.
-  /// @param amountIn Exact token input amount.
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param minAmountOut Minimum acceptable native output.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amountOut Native ETH output amount received.
-  /// @return amountInUsed Token input consumed.
   function swapExactInputTokensForNative(
     address pool,
     address recipient,
@@ -204,17 +198,19 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external returns (uint256 amountOut, uint256 amountInUsed);
 
+  /// @notice Swap exact token input for native ETH output, forwarding hook data to pool hooks.
+  function swapExactInputTokensForNative(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64,
+    uint256 minAmountOut,
+    uint256 deadline,
+    bytes calldata hookData
+  ) external returns (uint256 amountOut, uint256 amountInUsed);
+
   /// @notice Swap token input (bounded by `maxAmountIn`) for exact native ETH output.
-  /// @dev Output leg is received as WETH then unwrapped and forwarded as native ETH.
-  /// @param pool Target pool address.
-  /// @param recipient Receiver of native ETH.
-  /// @param zeroForOne Swap direction where the output side must be WETH.
-  /// @param amountOutDesired Exact native output target.
-  /// @param priceLimitX64 Directional Q64.64 price limit.
-  /// @param maxAmountIn Maximum token input spend.
-  /// @param deadline Unix timestamp after which the call reverts.
-  /// @return amountOut Native ETH output produced.
-  /// @return amountInUsed Token input consumed.
   function swapExactOutputTokensForNative(
     address pool,
     address recipient,
@@ -223,5 +219,17 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline
+  ) external returns (uint256 amountOut, uint256 amountInUsed);
+
+  /// @notice Swap token input for exact native ETH output, forwarding hook data to pool hooks.
+  function swapExactOutputTokensForNative(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint256 maxAmountIn,
+    uint256 deadline,
+    bytes calldata hookData
   ) external returns (uint256 amountOut, uint256 amountInUsed);
 }

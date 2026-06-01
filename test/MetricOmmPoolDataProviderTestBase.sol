@@ -94,7 +94,7 @@ contract LiquiditySeederForSwapData is IMetricOmmModifyLiquidityCallback {
       shares[i] = sharesPerBin;
     }
     LiquidityDelta memory deltas = LiquidityDelta({binIdxs: binIdxs, shares: shares});
-    IMetricOmmPoolActions(pool).addLiquidity(address(this), salt, deltas, "");
+    IMetricOmmPoolActions(pool).addLiquidity(address(this), salt, deltas, "", "");
   }
 
   function metricOmmModifyLiquidityCallback(uint256 amount0Delta, uint256 amount1Delta, bytes calldata)

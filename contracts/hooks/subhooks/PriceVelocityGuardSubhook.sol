@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {MetricHooks} from "@metric-core/libraries/MetricHooks.sol";
-import {SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
 import {SubhookUtils} from "../base/SubhookUtils.sol";
 
 /// @title PriceVelocityGuardSubhook
@@ -47,8 +46,8 @@ abstract contract PriceVelocityGuardSubhook is SubhookUtils {
     emit LastMidPriceUpdated(pool_, newLastMidPriceX64);
   }
 
-  function _beforeSwapPriceVelocity(address pool_, SwapOracleSnapshot calldata oracle) internal {
-    uint128 midPrice = (oracle.bidPriceX64 + oracle.askPriceX64) / 2;
+  function _beforeSwapPriceVelocity(address pool_, uint128 bidPriceX64, uint128 askPriceX64) internal {
+    uint128 midPrice = (bidPriceX64 + askPriceX64) / 2;
 
     PriceVelocityState storage s = priceVelocityState[pool_];
     uint128 prevMid = s.lastMidPriceX64;

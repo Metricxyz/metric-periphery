@@ -58,6 +58,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param deltas Shares per bin.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityExactShares(
@@ -66,7 +67,8 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint80 salt,
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity for caller-owned position with explicit shares and max token caps.
@@ -75,6 +77,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param deltas Shares per bin.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityExactShares(
@@ -82,7 +85,8 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint80 salt,
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps.
@@ -92,6 +96,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param weightDeltas Weight vector used for probe then scaled to integer shares.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityWeighted(
@@ -100,7 +105,8 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint80 salt,
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps for caller-owned position.
@@ -109,6 +115,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param weightDeltas Weight vector used for probe then scaled to integer shares.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityWeighted(
@@ -116,6 +123,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint80 salt,
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
-    uint256 maxAmountToken1
+    uint256 maxAmountToken1,
+    bytes calldata hookData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 }

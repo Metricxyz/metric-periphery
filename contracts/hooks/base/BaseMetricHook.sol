@@ -2,25 +2,25 @@
 pragma solidity ^0.8.35;
 
 import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
-import {SwapOracleSnapshot} from "@metric-core/types/HookTypes.sol";
+import {SubhookUtils} from "./SubhookUtils.sol";
 
 /// @title BaseMetricHook
 /// @notice Base for pool hooks: enforces pool-only entry and default-unimplemented callbacks.
-abstract contract BaseMetricHook is IMetricOmmHooks {
-  address public immutable pool;
-
-  error OnlyPool(address caller, address pool);
+///         A single hook instance may serve any number of pools deployed from `FACTORY`.
+abstract contract BaseMetricHook is IMetricOmmHooks, SubhookUtils {
+  error OnlyPool(address caller, address factory);
   error HookNotImplemented();
 
   modifier onlyPool() {
-    if (msg.sender != pool) revert OnlyPool(msg.sender, pool);
+    if (IMetricOmmPool(msg.sender).getImmutables().factory != FACTORY) {
+      revert OnlyPool(msg.sender, FACTORY);
+    }
     _;
   }
 
-  constructor(address pool_) {
-    pool = pool_;
-  }
+  constructor(address factory_) SubhookUtils(factory_) {}
 
   /// @notice Bitmask of enabled callbacks; used by deploy scripts for `hooksPermissions`.
   function getHookPermissions() external view virtual returns (uint16);
@@ -61,7 +61,7 @@ abstract contract BaseMetricHook is IMetricOmmHooks {
     revert HookNotImplemented();
   }
 
-  function beforeSwap(address, address, bool, int128, uint128, uint256, SwapOracleSnapshot calldata, bytes calldata)
+  function beforeSwap(address, address, bool, int128, uint128, uint256, uint128, uint128, bytes calldata)
     external
     virtual
     onlyPool
@@ -78,7 +78,8 @@ abstract contract BaseMetricHook is IMetricOmmHooks {
     uint128,
     uint256,
     uint256,
-    SwapOracleSnapshot calldata,
+    uint128,
+    uint128,
     int128,
     int128,
     uint256,

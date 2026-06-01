@@ -40,13 +40,9 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
     priceProviderWithReport.setBidAndAskPrice(SafeCast.toUint128(2 ** 64), SafeCast.toUint128(2 ** 64));
     oracle = priceProviderWithReport;
 
-    uint256 deployNonce = vm.getNonce(address(this));
-    address predictedPool = vm.computeCreateAddress(address(this), deployNonce + 1);
-
-    hook = new FullMetricHook(predictedPool, factory);
+    hook = new FullMetricHook(factory);
 
     pool = _deployPoolWithHook(address(hook), hook.getHookPermissions());
-    assertEq(address(pool), predictedPool);
 
     _approveUsersForPool(address(pool));
 
