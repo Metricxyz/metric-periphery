@@ -381,7 +381,8 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     uint128 askX64,
     uint128 priceLimitX64
   ) internal returns (bool ok, int256 a0, int256 a1) {
-    try IMetricOmmPool(pool).simulateSwapAndRevert(zeroForOne, amountSpecified, priceLimitX64, bidX64, askX64) {
+    try IMetricOmmPool(pool)
+      .simulateSwapAndRevert(address(this), zeroForOne, amountSpecified, priceLimitX64, bidX64, askX64, hex"") {
       revert("simulate did not revert");
     } catch (bytes memory reason) {
       if (reason.length < 68) return (false, 0, 0);
