@@ -80,9 +80,9 @@ Or run both Prettier and Foundry checks: `npm run format:check`.
 
 CI runs Prettier check and `forge fmt --check` (see `.github/workflows/test.yml`). Workflows pin **Foundry 1.7.0** and **`solc` 0.8.35** — match locally (`forge --version`, same `foundry.toml` `solc`).
 
-### Local pre-commit hook
+### Local git hooks
 
-Running **`npm install`** executes the **`prepare`** script, which sets **`git config --local core.hooksPath .githooks`**. Verify hooks are active:
+Running **`npm install`** or **`just hooks`** sets **`git config --local core.hooksPath .githooks`** and marks hooks executable. Verify hooks are active:
 
 ```bash
 git config --local --get core.hooksPath   # must print: .githooks
@@ -91,10 +91,18 @@ git config --local --get core.hooksPath   # must print: .githooks
 If empty, enable manually:
 
 ```bash
-git config --local core.hooksPath .githooks
+just hooks
+# or: git config --local core.hooksPath .githooks && chmod +x .githooks/*
 ```
 
-The hook runs **`npm run format:prettier:check`**, **`forge fmt --check`** (fails the commit on format drift), and **`forge test`**. Foundry must be on `PATH`. Skip with **`git commit --no-verify`**.
+| Hook           | Runs         | Blocks on                                                         |
+| -------------- | ------------ | ----------------------------------------------------------------- |
+| **pre-commit** | every commit | `forge fmt --check`, Prettier check                               |
+| **pre-push**   | every push   | `forge fmt --check` (again), Prettier check (again), `forge test` |
+
+**pre-commit** runs format checks only so a slow or failing test suite cannot be used as a reason to `--no-verify` past formatting. **pre-push** re-runs format checks to catch commits made with `--no-verify`.
+
+Foundry and Node (after `npm install`) must be on `PATH`. Local `--no-verify` can still skip hooks; CI enforces the same checks on pull requests.
 
 ## Documentation
 

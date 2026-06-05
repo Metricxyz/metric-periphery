@@ -17,3 +17,7 @@ install-forge:
 # Formatting
 fix:
     forge fmt
+
+# Enable local git hooks (.githooks/pre-commit + pre-push)
+hooks:
+    node scripts/enable-git-hooks.cjs
