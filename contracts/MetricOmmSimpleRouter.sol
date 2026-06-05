@@ -1,0 +1,233 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.35;
+
+import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
+import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
+import {MetricOmmSwapRouterBase} from "./base/MetricOmmSwapRouterBase.sol";
+import {SelfPermit} from "./base/SelfPermit.sol";
+import {IMetricOmmSimpleRouter} from "./interfaces/IMetricOmmSimpleRouter.sol";
+import {IMulticall} from "./interfaces/IMulticall.sol";
+
+/// @title MetricOmmSimpleRouter
+/// @notice Exact-input and exact-output swaps through one or more MetricOmm pools.
+/// @dev Expected callback pool and swap mode are stored in transient storage; callback data carries hop context.
+
+contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit, IMetricOmmSimpleRouter {
+  /// @notice Transient callback mode is not supported by this router.
+  /// @param callbackMode Unrecognized mode read from transient storage.
+  error InvalidCallbackMode(uint8 callbackMode);
+
+  // ============ Types ============
+
+  struct JustPayCallbackData {
+    address tokenToPay;
+    address payer;
+  }
+
+  struct ExactOutputIterateCallbackData {
+    address[] tokens;
+    address[] pools;
+    bytes[] hookDatas;
+    uint256 zeroForOneBitMap;
+    uint256 amountInMax;
+    address payer;
+  }
+
+  // ============ External: callback ============
+
+  /// @inheritdoc IMulticall
+  function multicall(bytes[] calldata data) public override(Multicall, IMulticall) returns (bytes[] memory results) {
+    return super.multicall(data);
+  }
+
+  function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external override {
+    if (amount0Delta <= 0 && amount1Delta <= 0) revert InvalidSwapDeltas();
+
+    _requireExpectedCallbackCaller(msg.sender);
+
+    uint8 callbackMode = _getCallbackMode();
+
+    if (callbackMode == CALLBACK_MODE_JUST_PAY) {
+      _justPayCallback(amount0Delta, amount1Delta, data);
+      return;
+    }
+    if (callbackMode == CALLBACK_MODE_EXACT_OUTPUT_ITERATE) {
+      _exactOutputIterateCallback(amount0Delta, amount1Delta, data);
+      return;
+    }
+    revert InvalidCallbackMode(callbackMode);
+  }
+
+  // ============ External: exact input ============
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut) {
+    _checkDeadline(params.deadline);
+    _validatePriceLimit(params.zeroForOne, params.priceLimitX64);
+
+    _setExpectedCallbackPool(params.pool, CALLBACK_MODE_JUST_PAY);
+    (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
+      .swap(
+        params.recipient,
+        params.zeroForOne,
+        _toSignedExactInput(params.amountIn),
+        params.priceLimitX64,
+        abi.encode(JustPayCallbackData({tokenToPay: params.tokenIn, payer: msg.sender})),
+        params.hookData
+      );
+    int128 out = _amountOut(params.zeroForOne, amount0Delta, amount1Delta);
+    amountOut = _toUint128(out);
+    if (amountOut < params.amountOutMinimum) revert InsufficientOutput(amountOut, params.amountOutMinimum);
+
+    _clearExpectedCallbackPool();
+  }
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  /// @dev Walks `pools[0..n-1]` forward. Each hop swaps a positive `amountSpecified`; the prior hop's output
+  ///      becomes the next hop's input. Intermediate tokens stay on this contract; the final hop sends output to
+  ///      `recipient`.
+  function exactInput(ExactInputParams calldata params) external returns (uint256 amountOut) {
+    _checkDeadline(params.deadline);
+    _validatePath(params.tokens, params.pools, params.hookDatas);
+
+    uint256 last = params.pools.length - 1;
+    int128 amount = _toSignedExactInput(params.amountIn);
+
+    for (uint256 i = 0; i <= last; i++) {
+      address pool = params.pools[i];
+      bool zeroForOne = _resolveZeroForOneBitmap(params.zeroForOneBitMap, i);
+
+      _setExpectedCallbackPool(pool, CALLBACK_MODE_JUST_PAY, 0);
+      (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(pool)
+        .swap(
+          i == last ? params.recipient : address(this),
+          zeroForOne,
+          amount,
+          _openLimit(zeroForOne),
+          abi.encode(JustPayCallbackData({tokenToPay: params.tokens[i], payer: i == 0 ? msg.sender : address(this)})),
+          params.hookDatas[i]
+        );
+
+      amount = _amountOut(zeroForOne, amount0Delta, amount1Delta);
+    }
+
+    if (amount <= 0) revert InvalidSwapDeltas();
+    amountOut = _toUint128(amount);
+    if (amountOut < params.amountOutMinimum) revert InsufficientOutput(amountOut, params.amountOutMinimum);
+
+    _clearExpectedCallbackPool();
+  }
+
+  // ============ External: exact output ============
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  function exactOutputSingle(ExactOutputSingleParams calldata params) external returns (uint256 amountIn) {
+    _checkDeadline(params.deadline);
+    _validatePriceLimit(params.zeroForOne, params.priceLimitX64);
+
+    int128 expectedAmountOut = _int128ExactAmount(params.amountOut);
+    _setExpectedCallbackPool(params.pool, CALLBACK_MODE_JUST_PAY);
+    (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
+      .swap(
+        params.recipient,
+        params.zeroForOne,
+        -expectedAmountOut,
+        params.priceLimitX64,
+        abi.encode(JustPayCallbackData({tokenToPay: params.tokenIn, payer: msg.sender})),
+        params.hookData
+      );
+    int128 amountOut = _amountOut(params.zeroForOne, amount0Delta, amount1Delta);
+    if (amountOut != expectedAmountOut) revert InvalidOutputAmount(amountOut, params.amountOut);
+
+    amountIn = _toUint128(_amountIn(params.zeroForOne, amount0Delta, amount1Delta));
+
+    if (amountIn > params.amountInMaximum) revert InputTooHigh(amountIn, params.amountInMaximum);
+    _clearExpectedCallbackPool();
+  }
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  /// @dev Starts at `pools[last]` with a negative `amountSpecified` for the final output token. Remaining hops run
+  ///      recursively inside `metricOmmSwapCallback`: each callback pays the current hop's input, then (unless on
+  ///      the last pool) swaps the next pool for exactly that input amount. The first swap's input delta is total
+  ///      `amountIn`.
+  function exactOutput(ExactOutputParams calldata params) external returns (uint256 amountIn) {
+    _checkDeadline(params.deadline);
+    _validatePath(params.tokens, params.pools, params.hookDatas);
+
+    uint8 hop = uint8(params.pools.length - 1);
+    address pool = params.pools[hop];
+    bool zeroForOne = _resolveZeroForOneBitmap(params.zeroForOneBitMap, hop);
+    int128 expectedAmountOut = _int128ExactAmount(params.amountOut);
+    _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop);
+    (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(pool)
+      .swap(
+        params.recipient,
+        zeroForOne,
+        -expectedAmountOut,
+        _openLimit(zeroForOne),
+        abi.encode(
+          ExactOutputIterateCallbackData({
+          tokens: params.tokens,
+          pools: params.pools,
+          hookDatas: params.hookDatas,
+          zeroForOneBitMap: params.zeroForOneBitMap,
+          payer: msg.sender,
+          amountInMax: params.amountInMaximum
+        })
+        ),
+        params.hookDatas[hop]
+      );
+
+    int128 amountOut = _amountOut(zeroForOne, amount0Delta, amount1Delta);
+    if (amountOut != expectedAmountOut) revert InvalidOutputAmount(amountOut, params.amountOut);
+
+    amountIn = _getExactOutputAmountIn();
+    _clearExpectedCallbackPool();
+  }
+
+  // ============ Internal: callback handlers ============
+
+  function _justPayCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) private {
+    JustPayCallbackData memory cb = abi.decode(data, (JustPayCallbackData));
+    _pay(cb.tokenToPay, cb.payer, msg.sender, uint256(_getPositiveAmount(amount0Delta, amount1Delta)));
+  }
+
+  function _exactOutputIterateCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) private {
+    ExactOutputIterateCallbackData memory cb = abi.decode(data, (ExactOutputIterateCallbackData));
+
+    int256 amountToPay = _getPositiveAmount(amount0Delta, amount1Delta);
+    uint8 hop = _getCallbackHop();
+
+    if (hop == 0) {
+      // forge-lint: disable-next-line(unsafe-typecast)
+      uint256 amountIn = uint256(amountToPay);
+      if (amountIn > cb.amountInMax) revert InputTooHigh(amountIn, cb.amountInMax);
+      _setExactOutputAmountIn(amountIn);
+      _pay(cb.tokens[0], cb.payer, msg.sender, amountIn);
+      return;
+    }
+    hop--;
+    address pool = cb.pools[hop];
+    bool zeroForOne = _resolveZeroForOneBitmap(cb.zeroForOneBitMap, hop);
+    _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop);
+
+    (int128 amount0DeltaReturned, int128 amount1DeltaReturned) = IMetricOmmPoolActions(pool)
+      .swap(msg.sender, zeroForOne, _negInt128(amountToPay), _openLimit(zeroForOne), data, cb.hookDatas[hop]);
+
+    int128 amountOut = _amountOut(zeroForOne, amount0DeltaReturned, amount1DeltaReturned);
+
+    if (amountOut != amountToPay) revert InvalidOutputAmountAtHop(hop, amountOut, amountToPay);
+  }
+
+  function _validatePath(address[] calldata tokens, address[] calldata pools, bytes[] calldata hookDatas)
+    internal
+    pure
+  {
+    if (
+      tokens.length < 2 || pools.length != tokens.length - 1 || hookDatas.length != pools.length
+        || pools.length > MAX_PATH_POOLS
+    ) {
+      revert InvalidPath();
+    }
+  }
+}
