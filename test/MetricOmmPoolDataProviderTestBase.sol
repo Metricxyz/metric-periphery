@@ -7,6 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
+import {PoolHooks, HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
 import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
@@ -160,13 +161,16 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) =
       _getScaleMultipliers(address(token0), address(token1));
 
+    PoolHooks memory hooks;
+    HookOrders memory hookOrders;
+
     pool = new MetricOmmPool(
       address(factoryStub),
       address(token0),
       address(token1),
       address(oracle),
-      address(0),
-      uint16(0),
+      hooks,
+      hookOrders,
       true,
       token0ScaleMultiplier,
       token1ScaleMultiplier,

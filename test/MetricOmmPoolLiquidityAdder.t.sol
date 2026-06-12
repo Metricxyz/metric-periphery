@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
+import {PoolHooks, HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
@@ -102,13 +103,16 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) =
       _getScaleMultipliers(address(weth), address(token1));
 
+    PoolHooks memory hooks;
+    HookOrders memory hookOrders;
+
     pool = new MetricOmmPool(
       address(factoryStub),
       address(weth),
       address(token1),
       address(oracle),
-      address(0),
-      uint16(0),
+      hooks,
+      hookOrders,
       true,
       token0ScaleMultiplier,
       token1ScaleMultiplier,

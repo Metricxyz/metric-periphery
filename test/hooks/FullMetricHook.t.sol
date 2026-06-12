@@ -4,24 +4,20 @@ pragma solidity ^0.8.35;
 import {MetricOmmPoolBaseTest, MockPriceProvider} from "@metric-core-test/MetricOmmPool.base.t.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
+import {HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
+import {PoolHooks} from "@metric-core/types/PoolHooksConfig.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IPriceProviderSwapReporter} from "@metric-core/interfaces/IPriceProvider/IPriceProviderSwapReporter.sol";
-import {FullMetricHook} from "../../contracts/hooks/examples/FullMetricHook.sol";
+import {HookOrderTestLib} from "@metric-core-test/HookOrderTestLib.sol";
+import {DepositAllowlistHook} from "../../contracts/hooks/DepositAllowlistHook.sol";
+import {SwapAllowlistHook} from "../../contracts/hooks/SwapAllowlistHook.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {TestCaller} from "@metric-core-test/mocks/TestCaller.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
-contract MockPriceProviderWithSwapReport is MockPriceProvider, IPriceProviderSwapReporter {
-  uint256 public reportCount;
-
-  function reportSwap(address, address, bool, int128, uint128, int256, int256, int8, uint104) external {
-    reportCount++;
-  }
-}
-
 contract FullMetricHookTest is MetricOmmPoolBaseTest {
-  MockPriceProviderWithSwapReport priceProviderWithReport;
-  FullMetricHook hook;
+  MockPriceProvider priceProvider;
+  DepositAllowlistHook depositHook;
+  SwapAllowlistHook swapHook;
 
   uint72 constant HOOK_TEST_SALT = 777;
 
@@ -36,13 +32,14 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
     token0 = new MockERC20("Token0", "TK0", 18);
     token1 = new MockERC20("Token1", "TK1", 18);
 
-    priceProviderWithReport = new MockPriceProviderWithSwapReport();
-    priceProviderWithReport.setBidAndAskPrice(SafeCast.toUint128(2 ** 64), SafeCast.toUint128(2 ** 64));
-    oracle = priceProviderWithReport;
+    priceProvider = new MockPriceProvider();
+    priceProvider.setBidAndAskPrice(SafeCast.toUint128(2 ** 64), SafeCast.toUint128(2 ** 64));
+    oracle = priceProvider;
 
-    hook = new FullMetricHook(factory);
+    depositHook = new DepositAllowlistHook(factory);
+    swapHook = new SwapAllowlistHook(factory);
 
-    pool = _deployPoolWithHook(address(hook), hook.getHookPermissions());
+    pool = _deployPoolWithHooks();
 
     _approveUsersForPool(address(pool));
 
@@ -56,7 +53,7 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
   }
 
   function test_blocksSwapWhenSwapperNotAllowed() public {
-    hook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
+    depositHook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
     _addLiquidity(0, -5, 4, 100_000, HOOK_TEST_SALT);
 
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToSwap.selector);
@@ -68,24 +65,30 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
     _addLiquidity(0, -5, 4, 10_000, HOOK_TEST_SALT);
   }
 
-  function test_swapReportsAfterAllowedSwap() public {
-    hook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
-    hook.setAllowedToSwap(address(pool), address(callers[0]), true);
+  function test_allowedSwapSucceeds() public {
+    depositHook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
+    swapHook.setAllowedToSwap(address(pool), address(callers[0]), true);
 
     _addLiquidity(0, -5, 4, 100_000, HOOK_TEST_SALT);
-
-    assertEq(priceProviderWithReport.reportCount(), 0);
     _swap(0, users[0], false, int128(1000), type(uint128).max);
-    assertEq(priceProviderWithReport.reportCount(), 1);
   }
 
-  function _deployPoolWithHook(address hooks, uint16 hooksPermissions) internal returns (MetricOmmPool deployedPool) {
+  function _deployPoolWithHooks() internal returns (MetricOmmPool deployedPool) {
     (BinState[] memory nn, BinState[] memory neg) = _defaultBinStateArrays();
+
+    PoolHooks memory hooks;
+    hooks.hook1 = address(depositHook);
+    hooks.hook2 = address(swapHook);
+
+    HookOrders memory hookOrders;
+    hookOrders.beforeAddLiquidity = HookOrderTestLib.encodeHookOrder(1, 0, 0, 0, 0, 0, 0);
+    hookOrders.beforeSwap = HookOrderTestLib.encodeHookOrder(2, 0, 0, 0, 0, 0, 0);
+
     return _deployPoolAndRegister(
       PoolDeployParams({
-        priceProvider: address(priceProviderWithReport),
+        priceProvider: address(priceProvider),
         hooks: hooks,
-        hooksPermissions: hooksPermissions,
+        hookOrders: hookOrders,
         immutablePriceProvider: true,
         protocolSpreadFeeE6: PROTOCOL_FEE,
         adminSpreadFeeE6: ADMIN_FEE,
@@ -94,7 +97,7 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
         negativeBinStates: neg,
         protocolNotionalFeeE8: 0,
         adminNotionalFeeE8: 0,
-        immutablePriceProviderForRegistry: address(priceProviderWithReport),
+        immutablePriceProviderForRegistry: address(priceProvider),
         lowestBin: -1,
         highestBin: 0
       })

@@ -29,10 +29,21 @@ contract MaliciousPoolForSimpleRouter {
       initialScaledToken1PerShareE18: 1,
       minimalMintableLiquidity: 1,
       immutablePriceProvider: address(0),
-      hooks: address(0),
-      hooksPermissions: uint16(0),
       lowestBin: 0,
-      highestBin: 0
+      highestBin: 0,
+      hook1: address(0),
+      hook2: address(0),
+      hook3: address(0),
+      hook4: address(0),
+      hook5: address(0),
+      hook6: address(0),
+      hook7: address(0),
+      beforeAddLiquidityOrder: 0,
+      afterAddLiquidityOrder: 0,
+      beforeRemoveLiquidityOrder: 0,
+      afterRemoveLiquidityOrder: 0,
+      beforeSwapOrder: 0,
+      afterSwapOrder: 0
     });
   }
 
@@ -72,10 +83,21 @@ contract ReentrantPoolForSimpleRouter {
       initialScaledToken1PerShareE18: 1,
       minimalMintableLiquidity: 1,
       immutablePriceProvider: address(0),
-      hooks: address(0),
-      hooksPermissions: uint16(0),
       lowestBin: 0,
-      highestBin: 0
+      highestBin: 0,
+      hook1: address(0),
+      hook2: address(0),
+      hook3: address(0),
+      hook4: address(0),
+      hook5: address(0),
+      hook6: address(0),
+      hook7: address(0),
+      beforeAddLiquidityOrder: 0,
+      afterAddLiquidityOrder: 0,
+      beforeRemoveLiquidityOrder: 0,
+      afterRemoveLiquidityOrder: 0,
+      beforeSwapOrder: 0,
+      afterSwapOrder: 0
     });
   }
 
@@ -132,10 +154,21 @@ contract WrongOutputPoolForSimpleRouter {
       initialScaledToken1PerShareE18: 1,
       minimalMintableLiquidity: 1,
       immutablePriceProvider: address(0),
-      hooks: address(0),
-      hooksPermissions: uint16(0),
       lowestBin: 0,
-      highestBin: 0
+      highestBin: 0,
+      hook1: address(0),
+      hook2: address(0),
+      hook3: address(0),
+      hook4: address(0),
+      hook5: address(0),
+      hook6: address(0),
+      hook7: address(0),
+      beforeAddLiquidityOrder: 0,
+      afterAddLiquidityOrder: 0,
+      beforeRemoveLiquidityOrder: 0,
+      afterRemoveLiquidityOrder: 0,
+      beforeSwapOrder: 0,
+      afterSwapOrder: 0
     });
   }
 

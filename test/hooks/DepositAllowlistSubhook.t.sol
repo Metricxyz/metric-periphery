@@ -3,46 +3,54 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
-import {DepositAllowlistSubhookHarness} from "./SubhookHarness.sol";
+import {DepositAllowlistHook} from "../../contracts/hooks/DepositAllowlistHook.sol";
 import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
+import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
+import {MockHookPool} from "./MockHookPool.sol";
 
-contract DepositAllowlistSubhookTest is Test {
+contract DepositAllowlistHookTest is Test {
   AllowlistFactoryStub factoryStub;
-  DepositAllowlistSubhookHarness harness;
+  DepositAllowlistHook hook;
+  MockHookPool pool;
 
   address admin = makeAddr("admin");
   address depositor = makeAddr("depositor");
-  address pool = makeAddr("pool");
 
   function setUp() public {
     factoryStub = new AllowlistFactoryStub();
-    factoryStub.setPoolAdmin(pool, admin);
-    harness = new DepositAllowlistSubhookHarness(pool, address(factoryStub));
+    pool = new MockHookPool(address(factoryStub));
+    factoryStub.setPoolAdmin(address(pool), admin);
+    hook = new DepositAllowlistHook(address(factoryStub));
   }
 
   function test_revertsWhenDepositorNotAllowed() public {
+    vm.prank(address(pool));
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToDeposit.selector);
-    harness.exposeBeforeAddLiquidityAllowlist(depositor);
+    LiquidityDelta memory emptyDelta = LiquidityDelta({binIdxs: new int256[](0), shares: new uint256[](0)});
+    hook.beforeAddLiquidity(address(0), depositor, 0, emptyDelta, "");
   }
 
   function test_passesWhenDepositorAllowed() public {
     vm.prank(admin);
-    harness.setAllowedToDeposit(pool, depositor, true);
-    harness.exposeBeforeAddLiquidityAllowlist(depositor);
+    hook.setAllowedToDeposit(address(pool), depositor, true);
+
+    vm.prank(address(pool));
+    LiquidityDelta memory emptyDelta = LiquidityDelta({binIdxs: new int256[](0), shares: new uint256[](0)});
+    hook.beforeAddLiquidity(address(0), depositor, 0, emptyDelta, "");
   }
 
   function test_onlyPoolAdminCanSetDepositors() public {
     vm.prank(admin);
-    harness.setAllowedToDeposit(pool, depositor, true);
-    assertTrue(harness.isAllowedToDeposit(pool, depositor));
+    hook.setAllowedToDeposit(address(pool), depositor, true);
+    assertTrue(hook.isAllowedToDeposit(address(pool), depositor));
 
     vm.prank(depositor);
-    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, pool, depositor, admin));
-    harness.setAllowedToDeposit(pool, depositor, false);
+    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(pool), depositor, admin));
+    hook.setAllowedToDeposit(address(pool), depositor, false);
   }
 
   function test_deniesByDefault() public view {
-    assertFalse(harness.isAllowedToDeposit(pool, depositor));
+    assertFalse(hook.isAllowedToDeposit(address(pool), depositor));
   }
 }

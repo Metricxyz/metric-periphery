@@ -3,46 +3,51 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
-import {SwapAllowlistSubhookHarness} from "./SubhookHarness.sol";
+import {SwapAllowlistHook} from "../../contracts/hooks/SwapAllowlistHook.sol";
 import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
+import {MockHookPool} from "./MockHookPool.sol";
 
-contract SwapAllowlistSubhookTest is Test {
+contract SwapAllowlistHookTest is Test {
   AllowlistFactoryStub factoryStub;
-  SwapAllowlistSubhookHarness harness;
+  SwapAllowlistHook hook;
+  MockHookPool pool;
 
   address admin = makeAddr("admin");
   address swapper = makeAddr("swapper");
-  address pool = makeAddr("pool");
 
   function setUp() public {
     factoryStub = new AllowlistFactoryStub();
-    factoryStub.setPoolAdmin(pool, admin);
-    harness = new SwapAllowlistSubhookHarness(pool, address(factoryStub));
+    pool = new MockHookPool(address(factoryStub));
+    factoryStub.setPoolAdmin(address(pool), admin);
+    hook = new SwapAllowlistHook(address(factoryStub));
   }
 
   function test_revertsWhenSwapperNotAllowed() public {
+    vm.prank(address(pool));
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToSwap.selector);
-    harness.exposeBeforeSwapAllowlist(swapper);
+    hook.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, "");
   }
 
   function test_passesWhenSwapperAllowed() public {
     vm.prank(admin);
-    harness.setAllowedToSwap(pool, swapper, true);
-    harness.exposeBeforeSwapAllowlist(swapper);
+    hook.setAllowedToSwap(address(pool), swapper, true);
+
+    vm.prank(address(pool));
+    hook.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, "");
   }
 
   function test_onlyPoolAdminCanSetSwappers() public {
     vm.prank(admin);
-    harness.setAllowedToSwap(pool, swapper, true);
-    assertTrue(harness.isAllowedToSwap(pool, swapper));
+    hook.setAllowedToSwap(address(pool), swapper, true);
+    assertTrue(hook.isAllowedToSwap(address(pool), swapper));
 
     vm.prank(swapper);
-    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, pool, swapper, admin));
-    harness.setAllowedToSwap(pool, swapper, false);
+    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(pool), swapper, admin));
+    hook.setAllowedToSwap(address(pool), swapper, false);
   }
 
   function test_deniesByDefault() public view {
-    assertFalse(harness.isAllowedToSwap(pool, swapper));
+    assertFalse(hook.isAllowedToSwap(address(pool), swapper));
   }
 }
