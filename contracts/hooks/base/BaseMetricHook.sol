@@ -22,8 +22,9 @@ abstract contract BaseMetricHook is IMetricOmmHooks, SubhookUtils {
 
   constructor(address factory_) SubhookUtils(factory_) {}
 
-  /// @notice Bitmask of enabled callbacks; used by deploy scripts for `hooksPermissions`.
-  function getHookPermissions() external view virtual returns (uint16);
+  function initialize(address, bytes calldata) external virtual onlyFactory returns (bytes4) {
+    return IMetricOmmHooks.initialize.selector;
+  }
 
   function beforeAddLiquidity(address, address, uint80, LiquidityDelta calldata, bytes calldata)
     external

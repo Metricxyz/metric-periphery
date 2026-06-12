@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
+import {PoolHooks, HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
 import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
@@ -100,10 +101,21 @@ contract MaliciousPoolForRouterTest {
       initialScaledToken1PerShareE18: 1,
       minimalMintableLiquidity: 1,
       immutablePriceProvider: address(0),
-      hooks: address(0),
-      hooksPermissions: uint16(0),
       lowestBin: 0,
-      highestBin: 0
+      highestBin: 0,
+      hook1: address(0),
+      hook2: address(0),
+      hook3: address(0),
+      hook4: address(0),
+      hook5: address(0),
+      hook6: address(0),
+      hook7: address(0),
+      beforeAddLiquidityOrder: 0,
+      afterAddLiquidityOrder: 0,
+      beforeRemoveLiquidityOrder: 0,
+      afterRemoveLiquidityOrder: 0,
+      beforeSwapOrder: 0,
+      afterSwapOrder: 0
     });
   }
 
@@ -144,10 +156,21 @@ contract ReentrantPoolForRouterTest {
       initialScaledToken1PerShareE18: 1,
       minimalMintableLiquidity: 1,
       immutablePriceProvider: address(0),
-      hooks: address(0),
-      hooksPermissions: uint16(0),
       lowestBin: 0,
-      highestBin: 0
+      highestBin: 0,
+      hook1: address(0),
+      hook2: address(0),
+      hook3: address(0),
+      hook4: address(0),
+      hook5: address(0),
+      hook6: address(0),
+      hook7: address(0),
+      beforeAddLiquidityOrder: 0,
+      afterAddLiquidityOrder: 0,
+      beforeRemoveLiquidityOrder: 0,
+      afterRemoveLiquidityOrder: 0,
+      beforeSwapOrder: 0,
+      afterSwapOrder: 0
     });
   }
 
@@ -256,13 +279,16 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) =
       _getScaleMultipliers(address(weth), address(token1));
 
+    PoolHooks memory hooks;
+    HookOrders memory hookOrders;
+
     pool = new MetricOmmPool(
       address(factoryStub),
       address(weth),
       address(token1),
       address(oracle),
-      address(0),
-      uint16(0),
+      hooks,
+      hookOrders,
       true,
       token0ScaleMultiplier,
       token1ScaleMultiplier,
