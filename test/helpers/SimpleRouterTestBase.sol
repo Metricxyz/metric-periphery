@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
+import {PoolHooks, HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
@@ -132,13 +133,16 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
     (BinState[] memory nnStates, BinState[] memory negStates) = _unpackBinStates(nnPacked, negPacked);
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) = _getScaleMultipliers(token0Addr, token1Addr);
 
+    PoolHooks memory hooks;
+    HookOrders memory hookOrders;
+
     deployed = new MetricOmmPool(
       address(factoryStub),
       token0Addr,
       token1Addr,
       address(oracle),
-      address(0),
-      uint16(0),
+      hooks,
+      hookOrders,
       true,
       token0ScaleMultiplier,
       token1ScaleMultiplier,

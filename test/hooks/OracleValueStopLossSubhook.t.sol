@@ -7,29 +7,59 @@ import {Extsload} from "@metric-core/Extsload.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
-import {OracleValueStopLossSubhook} from "../../contracts/hooks/subhooks/OracleValueStopLossSubhook.sol";
+import {PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
+import {OracleValueStopLossHook} from "../../contracts/hooks/OracleValueStopLossHook.sol";
+import {IOracleValueStopLossHook} from "../../contracts/interfaces/hooks/IOracleValueStopLossHook.sol";
 import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
-import {OracleValueStopLossSubhookHarness} from "./OracleValueStopLossSubhookHarness.sol";
 
-contract MockExtsloadPool2 is Extsload {}
+contract MockHookExtsloadPool is Extsload {
+  address public immutable factory;
+  uint256 public immutable minimalMintableLiquidity;
+
+  constructor(address factory_, uint256 minimalMintableLiquidity_) {
+    factory = factory_;
+    minimalMintableLiquidity = minimalMintableLiquidity_;
+  }
+
+  function getImmutables() external view returns (PoolImmutables memory immutables) {
+    immutables.factory = factory;
+    immutables.minimalMintableLiquidity = minimalMintableLiquidity;
+  }
+}
 
 contract OracleValueStopLossSubhookTest is Test {
   uint256 private constant Q64 = 1 << 64;
+  uint256 private constant E6 = 1e6;
+  uint256 private constant E8 = 1e8;
+  uint256 private constant MIN_SHARES = 1000;
+  uint256 private constant METRIC_SCALE = 1e6;
+  uint256 private constant BIN_SHARES = 10_000;
 
   AllowlistFactoryStub factoryStub;
-  OracleValueStopLossSubhookHarness harness;
-  MockExtsloadPool2 mockPool;
+  OracleValueStopLossHook hook;
+  MockHookExtsloadPool mockPool;
 
   address admin = makeAddr("admin");
 
   function setUp() public {
-    mockPool = new MockExtsloadPool2();
     factoryStub = new AllowlistFactoryStub();
+    mockPool = new MockHookExtsloadPool(address(factoryStub), MIN_SHARES);
     factoryStub.setPoolAdmin(address(mockPool), admin);
-    harness = new OracleValueStopLossSubhookHarness(address(mockPool), address(factoryStub));
+    hook = new OracleValueStopLossHook(address(factoryStub));
+    _initPool(address(mockPool), 0, 0, 0);
   }
 
   // ---- helpers ----
+
+  function _initPool(address pool, uint32 drawdownE6, uint32 decayE8, uint32 timelock) internal {
+    vm.prank(address(factoryStub));
+    hook.initialize(pool, abi.encode(drawdownE6, decayE8, timelock));
+  }
+
+  function _proposeAndExecuteTimelock(uint32 timelock) internal {
+    hook.proposeOracleStopLossTimelock(address(mockPool), timelock);
+    hook.executeOracleStopLossTimelock(address(mockPool));
+  }
 
   function _packBinState(uint104 t0, uint104 t1) internal pure returns (bytes32) {
     uint256 packed = uint256(t0);
@@ -65,8 +95,15 @@ contract OracleValueStopLossSubhookTest is Test {
     return Slot0Library.pack(0, binIdx, 0, 0, 0, 0);
   }
 
-  function _exposeStopLoss(int8 loBin, int8 hiBin, uint128 priceX64) internal {
-    harness.exposeAfterSwapOracleStopLoss(_packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64);
+  function _exposeStopLoss(int8 loBin, int8 hiBin, uint128 priceX64, bool zeroForOne) internal {
+    vm.prank(address(mockPool));
+    hook.afterSwap(
+      address(0), address(0), zeroForOne, 0, 0, _packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64, 0, 0, 0, ""
+    );
+  }
+
+  function _effectiveShares(uint256 shares) internal pure returns (uint256) {
+    return shares < MIN_SHARES ? MIN_SHARES : shares;
   }
 
   function _computeMetricToken0(uint104 t0, uint104 t1, uint256 shares, uint128 midX64)
@@ -74,9 +111,9 @@ contract OracleValueStopLossSubhookTest is Test {
     pure
     returns (uint256)
   {
-    uint256 t0ps = Math.mulDiv(uint256(t0), 1e18, shares);
-    uint256 t1ps = Math.mulDiv(uint256(t1), 1e18, shares);
-    return t0ps + Math.mulDiv(t1ps, Q64, midX64);
+    uint256 eff = _effectiveShares(shares);
+    uint256 t0ps = Math.mulDiv(uint256(t0), METRIC_SCALE, eff);
+    return t0ps + Math.mulDiv(Math.mulDiv(uint256(t1), Q64, midX64), METRIC_SCALE, eff);
   }
 
   function _computeMetricToken1(uint104 t0, uint104 t1, uint256 shares, uint128 midX64)
@@ -84,45 +121,191 @@ contract OracleValueStopLossSubhookTest is Test {
     pure
     returns (uint256)
   {
-    uint256 t0ps = Math.mulDiv(uint256(t0), 1e18, shares);
-    uint256 t1ps = Math.mulDiv(uint256(t1), 1e18, shares);
-    return Math.mulDiv(t0ps, midX64, Q64) + t1ps;
+    uint256 eff = _effectiveShares(shares);
+    uint256 t1ps = Math.mulDiv(uint256(t1), METRIC_SCALE, eff);
+    return Math.mulDiv(Math.mulDiv(uint256(t0), midX64, Q64), METRIC_SCALE, eff) + t1ps;
+  }
+
+  function _proposeAndExecuteDrawdown(uint256 drawdownE6) internal {
+    hook.proposeOracleStopLossDrawdown(address(mockPool), drawdownE6);
+    hook.executeOracleStopLossDrawdown(address(mockPool));
+  }
+
+  function _proposeAndExecuteDecay(uint256 decayE8) internal {
+    hook.proposeOracleStopLossDecay(address(mockPool), decayE8);
+    hook.executeOracleStopLossDecay(address(mockPool));
+  }
+
+  function _proposeAndExecuteWatermarks(int8 binIdx, uint104 t0, uint104 t1) internal {
+    hook.proposeOracleStopLossHighWatermarks(address(mockPool), binIdx, t0, t1);
+    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+  }
+
+  function _drawdown() internal view returns (uint256 v) {
+    (v,,,) = hook.oracleStopLossConfig(address(mockPool));
+  }
+
+  function _decay() internal view returns (uint256 v) {
+    (, v,,) = hook.oracleStopLossConfig(address(mockPool));
+  }
+
+  function _configure(uint256 drawdownE6, uint256 decayE8) internal {
+    vm.startPrank(admin);
+    _proposeAndExecuteDrawdown(drawdownE6);
+    if (decayE8 > 0) _proposeAndExecuteDecay(decayE8);
+    vm.stopPrank();
   }
 
   // ---- admin tests ----
 
   function test_onlyAdminCanSetDrawdown() public {
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
-    assertEq(harness.oracleStopLossDrawdownE6(address(mockPool)), 50_000);
+    vm.startPrank(admin);
+    _proposeAndExecuteDrawdown(50_000);
+    vm.stopPrank();
+    assertEq(_drawdown(), 50_000);
 
     address rando = makeAddr("rando");
     vm.prank(rando);
     vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
-    harness.setOracleStopLossDrawdown(address(mockPool), 100_000);
+    hook.proposeOracleStopLossDrawdown(address(mockPool), 100_000);
   }
 
   function test_drawdownCannotExceed1e6() public {
     vm.prank(admin);
-    vm.expectRevert(abi.encodeWithSelector(OracleValueStopLossSubhook.OracleStopLossDrawdownTooLarge.selector, 1e6 + 1));
-    harness.setOracleStopLossDrawdown(address(mockPool), 1e6 + 1);
+    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossDrawdownTooLarge.selector, E6 + 1));
+    hook.proposeOracleStopLossDrawdown(address(mockPool), E6 + 1);
+  }
+
+  function test_decayCannotExceed1e8() public {
+    vm.prank(admin);
+    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossDecayTooLarge.selector, E8 + 1));
+    hook.proposeOracleStopLossDecay(address(mockPool), E8 + 1);
+  }
+
+  function test_initialize_setsConfig() public {
+    OracleValueStopLossHook freshHook = new OracleValueStopLossHook(address(factoryStub));
+    MockHookExtsloadPool freshPool = new MockHookExtsloadPool(address(factoryStub), MIN_SHARES);
+    vm.prank(address(factoryStub));
+    freshHook.initialize(address(freshPool), abi.encode(uint32(50_000), uint32(58), uint32(3 days)));
+    (uint32 dd, uint32 decay, uint32 tl, bool initialized) = freshHook.oracleStopLossConfig(address(freshPool));
+    assertEq(dd, 50_000);
+    assertEq(decay, 58);
+    assertEq(tl, 3 days);
+    assertTrue(initialized);
+  }
+
+  function test_cannotReinitialize() public {
+    vm.prank(address(factoryStub));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossAlreadyInitialized.selector, address(mockPool))
+    );
+    hook.initialize(address(mockPool), abi.encode(uint32(0), uint32(0), uint32(0)));
+  }
+
+  function test_timelockUpdateDelayedByCurrentTimelock() public {
+    OracleValueStopLossHook freshHook = new OracleValueStopLossHook(address(factoryStub));
+    MockHookExtsloadPool freshPool = new MockHookExtsloadPool(address(factoryStub), MIN_SHARES);
+    factoryStub.setPoolAdmin(address(freshPool), admin);
+    vm.prank(address(factoryStub));
+    freshHook.initialize(address(freshPool), abi.encode(uint32(0), uint32(0), uint32(1 days)));
+
+    vm.startPrank(admin);
+    freshHook.proposeOracleStopLossTimelock(address(freshPool), uint32(2 days));
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IOracleValueStopLossHook.OracleStopLossTimelockNotElapsed.selector, block.timestamp + 1 days, block.timestamp
+      )
+    );
+    freshHook.executeOracleStopLossTimelock(address(freshPool));
+    vm.warp(block.timestamp + 1 days);
+    freshHook.executeOracleStopLossTimelock(address(freshPool));
+    vm.stopPrank();
+    (,, uint32 tl,) = freshHook.oracleStopLossConfig(address(freshPool));
+    assertEq(tl, 2 days);
+  }
+
+  function test_drawdownTimelockDelaysExecution() public {
+    vm.startPrank(admin);
+    _proposeAndExecuteTimelock(uint32(1 days));
+    hook.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IOracleValueStopLossHook.OracleStopLossTimelockNotElapsed.selector, block.timestamp + 1 days, block.timestamp
+      )
+    );
+    hook.executeOracleStopLossDrawdown(address(mockPool));
+    vm.warp(block.timestamp + 1 days);
+    hook.executeOracleStopLossDrawdown(address(mockPool));
+    vm.stopPrank();
+    assertEq(_drawdown(), 50_000);
+  }
+
+  function test_decayTimelockZeroExecutesImmediately() public {
+    vm.startPrank(admin);
+    hook.proposeOracleStopLossDecay(address(mockPool), 58);
+    hook.executeOracleStopLossDecay(address(mockPool));
+    vm.stopPrank();
+    assertEq(_decay(), 58);
+  }
+
+  function test_cancelPendingDrawdown() public {
+    vm.startPrank(admin);
+    _proposeAndExecuteTimelock(uint32(1 days));
+    hook.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
+    hook.cancelOracleStopLossDrawdown(address(mockPool));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossNoPendingDrawdown.selector, address(mockPool))
+    );
+    hook.executeOracleStopLossDrawdown(address(mockPool));
+    vm.stopPrank();
   }
 
   function test_onlyAdminCanSetWatermarks() public {
-    vm.prank(admin);
-    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
+    vm.startPrank(admin);
+    _proposeAndExecuteWatermarks(0, 1, 2);
+    vm.stopPrank();
 
     address rando = makeAddr("rando");
     vm.prank(rando);
     vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
-    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
+    hook.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
+  }
+
+  function test_watermarkTimelockDelaysExecution() public {
+    vm.startPrank(admin);
+    _proposeAndExecuteTimelock(uint32(1 days));
+    hook.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 11, 22);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IOracleValueStopLossHook.OracleStopLossTimelockNotElapsed.selector, block.timestamp + 1 days, block.timestamp
+      )
+    );
+    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    vm.warp(block.timestamp + 1 days);
+    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    vm.stopPrank();
+
+    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0, 11);
+    assertEq(hwm1, 22);
+  }
+
+  function test_cancelPendingWatermarks() public {
+    vm.startPrank(admin);
+    hook.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
+    hook.cancelOracleStopLossHighWatermarks(address(mockPool));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossNoPendingHighWatermark.selector, address(mockPool))
+    );
+    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    vm.stopPrank();
   }
 
   // ---- no-op when drawdown is zero ----
 
   function test_noOpWhenDrawdownNotConfigured() public {
-    _storeBin(0, 1000, 1000, 100);
-    _exposeStopLoss(0, 0, uint128(Q64));
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _exposeStopLoss(0, 0, uint128(Q64), false);
   }
 
   // ---- sets both watermarks on first swap ----
@@ -130,216 +313,380 @@ contract OracleValueStopLossSubhookTest is Test {
   function test_setsBothWatermarksOnFirstSwap() public {
     uint104 t0 = 500;
     uint104 t1 = 500;
-    uint256 shares = 100;
-    uint128 price = uint128(Q64); // 1:1
+    uint256 shares = BIN_SHARES;
+    uint128 price = uint128(Q64);
 
     _storeBin(0, t0, t1, shares);
+    _configure(50_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
+    _exposeStopLoss(0, 0, price, false);
 
-    _exposeStopLoss(0, 0, price);
-
-    assertEq(harness.highWatermarkToken0(address(mockPool), 0), _computeMetricToken0(t0, t1, shares, price));
-    assertEq(harness.highWatermarkToken1(address(mockPool), 0), _computeMetricToken1(t0, t1, shares, price));
+    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0, _computeMetricToken0(t0, t1, shares, price));
+    assertEq(hwm1, _computeMetricToken1(t0, t1, shares, price));
   }
 
-  // ---- small drawdown passes ----
+  // ---- 1. direction mapping ----
+
+  function test_metricT0BreachBlocksZeroForOneOnly() public {
+    uint104 t0 = 1000;
+    uint104 t1 = 1000;
+    uint256 shares = BIN_SHARES;
+    uint128 initPrice = uint128(Q64);
+
+    _storeBin(0, t0, t1, shares);
+    _configure(50_000, 0);
+
+    _exposeStopLoss(0, 0, initPrice, false);
+
+    // Mid rises → metricT0 drops, metricT1 rises (pure mid move).
+    uint128 highPrice = uint128(2 * Q64);
+
+    uint256 m0 = _computeMetricToken0(t0, t1, shares, highPrice);
+    (uint256 hwm0,) = hook.currentHighWatermarks(address(mockPool), 0);
+    uint256 threshold = hwm0 * (E6 - 50_000) / E6;
+
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossTriggered.selector, int8(0), true, m0, threshold)
+    );
+    _exposeStopLoss(0, 0, highPrice, true);
+
+    // Opposite direction allowed.
+    _exposeStopLoss(0, 0, highPrice, false);
+  }
+
+  function test_metricT1BreachBlocksOneForZeroOnly() public {
+    uint104 t0 = 1000;
+    uint104 t1 = 1000;
+    uint256 shares = BIN_SHARES;
+    uint128 initPrice = uint128(Q64);
+
+    _storeBin(0, t0, t1, shares);
+    _configure(50_000, 0);
+
+    _exposeStopLoss(0, 0, initPrice, false);
+
+    // Mid falls → metricT1 drops, metricT0 rises.
+    uint128 lowPrice = uint128(Q64 / 2);
+
+    uint256 m1 = _computeMetricToken1(t0, t1, shares, lowPrice);
+    (, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    uint256 threshold = hwm1 * (E6 - 50_000) / E6;
+
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossTriggered.selector, int8(0), false, m1, threshold)
+    );
+    _exposeStopLoss(0, 0, lowPrice, false);
+
+    // Opposite direction allowed.
+    _exposeStopLoss(0, 0, lowPrice, true);
+  }
+
+  function test_bothBreachedBlocksBothDirections() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 0);
+
+    _exposeStopLoss(0, 0, price, false);
+
+    // Value leak: both metrics drop.
+    _storeBin(0, 800, 800, BIN_SHARES);
+
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, true);
+
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, false);
+  }
+
+  // ---- 2. auto-reopen on mid mean-reversion ----
+
+  function test_autoReopenOnMidMeanReversion() public {
+    uint104 t0 = 1000;
+    uint104 t1 = 1000;
+    uint256 shares = BIN_SHARES;
+    uint128 initPrice = uint128(Q64);
+
+    _storeBin(0, t0, t1, shares);
+    _configure(50_000, 0);
+
+    _exposeStopLoss(0, 0, initPrice, false);
+
+    uint128 highPrice = uint128(2 * Q64);
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, highPrice, true);
+
+    // Mid reverts to initial — metricT0 recovers within band.
+    _exposeStopLoss(0, 0, initPrice, true);
+  }
+
+  // ---- 3. decay re-arm ----
+
+  function test_decayRearmsAfterPermanentRepricing() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 58); // ~5%/day
+
+    _exposeStopLoss(0, 0, price, false);
+
+    _storeBin(0, 800, 800, BIN_SHARES);
+
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, true);
+
+    // Warp until decayed watermark ratchets below the drawdown floor (~4 days at 58 E8/s).
+    vm.warp(block.timestamp + 5 days);
+
+    _exposeStopLoss(0, 0, price, true);
+
+    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    uint256 cur0 = _computeMetricToken0(800, 800, BIN_SHARES, price);
+    uint256 cur1 = _computeMetricToken1(800, 800, BIN_SHARES, price);
+    assertGe(hwm0, cur0);
+    assertGe(hwm1, cur1);
+  }
+
+  // ---- 4. V-shape move ----
+
+  function test_vShapeMove_blocksEachSideThenDecays() public {
+    uint104 t0 = 1000;
+    uint104 t1 = 1000;
+    uint256 shares = BIN_SHARES;
+    uint128 initPrice = uint128(Q64);
+
+    _storeBin(0, t0, t1, shares);
+    _configure(50_000, 58);
+
+    _exposeStopLoss(0, 0, initPrice, false);
+
+    // Leg 1: mid spikes — blocks zeroForOne.
+    uint128 highPrice = uint128(2 * Q64);
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, highPrice, true);
+    _exposeStopLoss(0, 0, highPrice, false);
+
+    // Leg 2: mid crashes — blocks oneForZero.
+    uint128 lowPrice = uint128(Q64 / 2);
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, lowPrice, false);
+    _exposeStopLoss(0, 0, lowPrice, true);
+
+    // Decay unwinds the first block (high-price leg).
+    vm.warp(block.timestamp + 2 days);
+    _exposeStopLoss(0, 0, lowPrice, true);
+  }
+
+  // ---- 5. dust shares saturate ----
+
+  function test_dustShares_flooredByMinLiquidity_noRevert() public {
+    // Dust shares are floored at minimalMintableLiquidity; max uint104 balances clamp to uint104.max.
+    _storeBin(0, type(uint104).max, type(uint104).max, 1);
+    _configure(50_000, 0);
+
+    _exposeStopLoss(0, 0, uint128(Q64), false);
+
+    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0, type(uint104).max);
+    assertEq(hwm1, type(uint104).max);
+  }
+
+  // ---- 6. first touch with decay enabled ----
+
+  function test_firstTouchWithDecayEnabled_initializesToCurrentMetric() public {
+    uint104 t0 = 500;
+    uint104 t1 = 500;
+    uint256 shares = BIN_SHARES;
+    uint128 price = uint128(Q64);
+
+    _storeBin(0, t0, t1, shares);
+    _configure(50_000, 58);
+
+    _exposeStopLoss(0, 0, price, false);
+
+    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0, _computeMetricToken0(t0, t1, shares, price));
+    assertEq(hwm1, _computeMetricToken1(t0, t1, shares, price));
+  }
+
+  // ---- 7. dt * rate >= 1e8 floors at 0, ratchet restores ----
+
+  function test_decayFloorsAtZero_ratchetRestores() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(50_000, E8); // 100%/second
+
+    _exposeStopLoss(0, 0, price, false);
+
+    vm.warp(block.timestamp + 2);
+
+    (uint256 hwm0Before,) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0Before, 0);
+
+    _exposeStopLoss(0, 0, price, false);
+
+    (uint256 hwm0After,) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0After, _computeMetricToken0(1000, 1000, BIN_SHARES, price));
+  }
+
+  // ---- 8. two-sided breach with decay ----
+
+  function test_twoSidedBreach_decayRearms_renewedExtractionRetriggers() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 58);
+
+    _exposeStopLoss(0, 0, price, false);
+
+    _storeBin(0, 800, 800, BIN_SHARES);
+
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, true);
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, false);
+
+    vm.warp(block.timestamp + 5 days);
+    _exposeStopLoss(0, 0, price, true);
+
+    // Renewed extraction immediately re-triggers.
+    _storeBin(0, 700, 700, BIN_SHARES);
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, true);
+  }
+
+  function test_setDecayZero_freezesRecovery() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 58);
+
+    _exposeStopLoss(0, 0, price, false);
+    _storeBin(0, 800, 800, BIN_SHARES);
+
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, true);
+
+    vm.warp(block.timestamp + 30 days);
+
+    vm.startPrank(admin);
+    _proposeAndExecuteDecay(0);
+    vm.stopPrank();
+
+    // Still blocked — decay frozen.
+    vm.expectRevert();
+    _exposeStopLoss(0, 0, price, true);
+  }
+
+  // ---- existing coverage (updated) ----
 
   function test_smallDrawdownPasses() public {
-    uint128 price = uint128(Q64); // 1:1
-    _storeBin(0, 1000, 1000, 100);
-
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 100_000); // 10%
-
-    _exposeStopLoss(0, 0, price);
-
-    // Drop by 5% (within 10% threshold)
-    _storeBin(0, 950, 950, 100);
-    _exposeStopLoss(0, 0, price);
-  }
-
-  // ---- large drawdown in token0 value reverts ----
-
-  function test_largeDrawdownToken0Reverts() public {
-    uint128 price = uint128(Q64); // 1:1
-    _storeBin(0, 1000, 1000, 100);
-
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000); // 5%
-
-    _exposeStopLoss(0, 0, price);
-
-    // Drop token0 heavily, token1 stays -- token0-denominated value drops
-    _storeBin(0, 800, 1000, 100);
-
-    uint256 hwmT0 = _computeMetricToken0(1000, 1000, 100, price);
-    uint256 curT0 = _computeMetricToken0(800, 1000, 100, price);
-    uint256 threshold = hwmT0 * (1e6 - 50_000) / 1e6;
-
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        OracleValueStopLossSubhook.OracleStopLossTriggered.selector, int8(0), true, curT0, threshold
-      )
-    );
-    _exposeStopLoss(0, 0, price);
-  }
-
-  // ---- large drawdown in token1 value reverts (token0 metric stays within threshold) ----
-
-  function test_largeDrawdownToken1Reverts() public {
-    // Price = 1:1. Start with a bin heavily weighted toward token1 so that losing token1
-    // triggers the token1 metric first while the token0 metric stays within threshold.
     uint128 price = uint128(Q64);
-    _storeBin(0, 100, 1000, 100);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(100_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000); // 5%
-
-    _exposeStopLoss(0, 0, price);
-
-    // Drop token1 by ~6% (60 units): token0 metric drops ~5.5%, token1 metric drops ~5.5%.
-    // But let's make it asymmetric so only token1 breaches: add a bit of token0 to compensate.
-    // token0: 100->150, token1: 1000->880. At price=1:
-    //   metricT0 = (150+880)*1e18/100 = 10.3e18 vs hwm (100+1000)*1e18/100 = 11e18 => 6.4% drop -> triggers
-    // That also triggers token0. Let me just test that whichever triggers first is caught:
-    // Simply drop token1 by >5%, token0 stays same. Both metrics will drop, token1 drops more.
-    _storeBin(0, 100, 900, 100);
-
-    // Token0 metric: (100+900)/100 = 10e18, hwm was (100+1000)/100 = 11e18 => 9.1% drop > 5% -> triggers first
-    uint256 hwmT0 = _computeMetricToken0(100, 1000, 100, price);
-    uint256 curT0 = _computeMetricToken0(100, 900, 100, price);
-    uint256 threshold = hwmT0 * (1e6 - 50_000) / 1e6;
-
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        OracleValueStopLossSubhook.OracleStopLossTriggered.selector, int8(0), true, curT0, threshold
-      )
-    );
-    _exposeStopLoss(0, 0, price);
+    _exposeStopLoss(0, 0, price, false);
+    _storeBin(0, 950, 950, BIN_SHARES);
+    _exposeStopLoss(0, 0, price, false);
   }
-
-  // ---- multi-bin: checks all touched bins ----
 
   function test_multiBin_checksAllTouchedBins() public {
     uint128 price = uint128(Q64);
-    _storeBin(0, 1000, 1000, 100);
-    _storeBin(1, 1000, 1000, 100);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _storeBin(1, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
+    _exposeStopLoss(0, 1, price, false);
 
-    _exposeStopLoss(0, 1, price);
-
-    uint256 expectedT0 = _computeMetricToken0(1000, 1000, 100, price);
-    assertEq(harness.highWatermarkToken0(address(mockPool), 0), expectedT0);
-    assertEq(harness.highWatermarkToken0(address(mockPool), 1), expectedT0);
+    uint256 expectedT0 = _computeMetricToken0(1000, 1000, BIN_SHARES, price);
+    (uint256 hwm0Bin0,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0Bin1,) = hook.currentHighWatermarks(address(mockPool), 1);
+    assertEq(hwm0Bin0, expectedT0);
+    assertEq(hwm0Bin1, expectedT0);
   }
-
-  // ---- watermarks update independently ----
 
   function test_watermarksUpdateOnIncrease() public {
     uint128 price = uint128(Q64);
-    _storeBin(0, 500, 500, 100);
+    _storeBin(0, 500, 500, BIN_SHARES);
+    _configure(50_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
+    _exposeStopLoss(0, 0, price, false);
+    (uint256 hwm0Before, uint256 hwm1Before) = hook.currentHighWatermarks(address(mockPool), 0);
 
-    _exposeStopLoss(0, 0, price);
-    uint256 hwm0Before = harness.highWatermarkToken0(address(mockPool), 0);
-    uint256 hwm1Before = harness.highWatermarkToken1(address(mockPool), 0);
+    _storeBin(0, 600, 600, BIN_SHARES);
+    _exposeStopLoss(0, 0, price, false);
 
-    // Increase reserves
-    _storeBin(0, 600, 600, 100);
-    _exposeStopLoss(0, 0, price);
-
-    assertGt(harness.highWatermarkToken0(address(mockPool), 0), hwm0Before);
-    assertGt(harness.highWatermarkToken1(address(mockPool), 0), hwm1Before);
+    (uint256 hwm0After, uint256 hwm1After) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertGt(hwm0After, hwm0Before);
+    assertGt(hwm1After, hwm1Before);
   }
-
-  // ---- admin set allows recovery ----
 
   function test_adminSetAllowsRecovery() public {
     uint128 price = uint128(Q64);
-    _storeBin(0, 1000, 1000, 100);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
+    _exposeStopLoss(0, 0, price, false);
 
-    _exposeStopLoss(0, 0, price);
-
-    _storeBin(0, 800, 800, 100);
+    _storeBin(0, 800, 800, BIN_SHARES);
     vm.expectRevert();
-    _exposeStopLoss(0, 0, price);
+    _exposeStopLoss(0, 0, price, true);
 
-    uint128 expectedT0 = uint128(_computeMetricToken0(800, 800, 100, price));
-    uint128 expectedT1 = uint128(_computeMetricToken1(800, 800, 100, price));
-    vm.prank(admin);
-    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, expectedT0, expectedT1);
+    uint104 expectedT0 = uint104(_computeMetricToken0(800, 800, BIN_SHARES, price));
+    uint104 expectedT1 = uint104(_computeMetricToken1(800, 800, BIN_SHARES, price));
+    vm.startPrank(admin);
+    _proposeAndExecuteWatermarks(0, expectedT0, expectedT1);
+    vm.stopPrank();
 
-    _exposeStopLoss(0, 0, price);
+    _exposeStopLoss(0, 0, price, true);
 
-    assertEq(harness.highWatermarkToken0(address(mockPool), 0), expectedT0);
-    assertEq(harness.highWatermarkToken1(address(mockPool), 0), expectedT1);
+    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0, expectedT0);
+    assertEq(hwm1, expectedT1);
   }
-
-  // ---- skips empty bins ----
 
   function test_skipsEmptyBins() public {
     uint128 price = uint128(Q64);
-    _storeBin(0, 1000, 1000, 100);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
     _storeBin(1, 0, 0, 0);
-    _storeBin(2, 1000, 1000, 100);
+    _storeBin(2, 1000, 1000, BIN_SHARES);
+    _configure(50_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
+    _exposeStopLoss(0, 2, price, false);
 
-    _exposeStopLoss(0, 2, price);
-
-    assertGt(harness.highWatermarkToken0(address(mockPool), 0), 0);
-    assertEq(harness.highWatermarkToken0(address(mockPool), 1), 0);
-    assertGt(harness.highWatermarkToken0(address(mockPool), 2), 0);
+    (uint256 hwm0,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm1,) = hook.currentHighWatermarks(address(mockPool), 1);
+    (uint256 hwm2,) = hook.currentHighWatermarks(address(mockPool), 2);
+    assertGt(hwm0, 0);
+    assertEq(hwm1, 0);
+    assertGt(hwm2, 0);
   }
 
-  // ---- different oracle prices produce different metrics ----
-
   function test_differentOraclePricesProduceDifferentMetrics() public {
-    _storeBin(0, 1000, 500, 100);
+    _storeBin(0, 1000, 500, BIN_SHARES);
+    _configure(50_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 50_000);
-
-    // Price = 1 token1/token0
     uint128 price1 = uint128(Q64);
-    _exposeStopLoss(0, 0, price1);
-    uint256 hwmT0_price1 = harness.highWatermarkToken0(address(mockPool), 0);
+    _exposeStopLoss(0, 0, price1, false);
+    (uint256 hwmT0_price1,) = hook.currentHighWatermarks(address(mockPool), 0);
 
-    // Clear watermarks and use price = 2 token1/token0 (token1 is cheaper)
-    vm.prank(admin);
-    harness.setOracleStopLossHighWatermarks(address(mockPool), 0, 0, 0);
+    vm.startPrank(admin);
+    _proposeAndExecuteWatermarks(0, 0, 0);
+    vm.stopPrank();
 
     uint128 price2 = uint128(2 * Q64);
-    _exposeStopLoss(0, 0, price2);
-    uint256 hwmT0_price2 = harness.highWatermarkToken0(address(mockPool), 0);
+    _exposeStopLoss(0, 0, price2, false);
+    (uint256 hwmT0_price2,) = hook.currentHighWatermarks(address(mockPool), 0);
 
-    // At price=2, token1 is worth less in token0 terms, so token0-denominated metric is lower
     assertGt(hwmT0_price1, hwmT0_price2);
   }
 
-  // ---- exact boundary passes ----
-
   function test_exactBoundaryPasses() public {
     uint128 price = uint128(Q64);
-    _storeBin(0, 1000, 1000, 100);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _configure(100_000, 0);
 
-    vm.prank(admin);
-    harness.setOracleStopLossDrawdown(address(mockPool), 100_000); // 10%
+    _exposeStopLoss(0, 0, price, false);
 
-    _exposeStopLoss(0, 0, price);
-
-    // Drop exactly 10%: metric = threshold, should NOT revert
-    _storeBin(0, 900, 900, 100);
-    _exposeStopLoss(0, 0, price);
+    // Value leak exactly at 10% boundary — both metrics at threshold, no revert.
+    _storeBin(0, 900, 900, BIN_SHARES);
+    _exposeStopLoss(0, 0, price, false);
   }
 }

@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.35;
+
+import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IPriceVelocityGuardHook} from "../interfaces/hooks/IPriceVelocityGuardHook.sol";
+import {BaseMetricHook} from "./base/BaseMetricHook.sol";
+
+/// @title PriceVelocityGuardHook
+/// @notice Caps how fast the provided price can move between blocks, per pool.
+/// @dev This hook allows the pool admin to increase security of the pool by limiting price
+///      manipulation through velocity constraints. However, it assumes that the pool admin is not
+///      an adversary and acts to optimize pool profitability. The pool admin must be trusted.
+///
+///      Allowed deviation scales as `maxChangePerBlockE18 * sqrt(1 + blockDifference)`.
+///      Comparison is performed on squares to avoid an on-chain sqrt:
+///        changeE18^2 <= maxChangePerBlockE18^2 * (1 + blockDiff)
+///      where 1e18 = 100% (full unit).
+contract PriceVelocityGuardHook is BaseMetricHook, IPriceVelocityGuardHook {
+  mapping(address pool => PriceVelocityState) public priceVelocityState;
+
+  constructor(address factory_) BaseMetricHook(factory_) {}
+
+  function setMaxChangePerBlock(address pool_, uint64 newMaxPctChangePerBlockE18) external onlyPoolAdmin(pool_) {
+    priceVelocityState[pool_].maxChangePerBlockE18 = newMaxPctChangePerBlockE18;
+    emit MaxChangePerBlockSet(pool_, newMaxPctChangePerBlockE18);
+  }
+
+  function setLastMidPrice(address pool_, uint128 newLastMidPriceX64) external onlyPoolAdmin(pool_) {
+    PriceVelocityState storage s = priceVelocityState[pool_];
+    s.lastMidPriceX64 = newLastMidPriceX64;
+    s.lastUpdateBlock = uint64(block.number);
+    emit LastMidPriceUpdated(pool_, newLastMidPriceX64);
+  }
+
+  function beforeSwap(
+    address,
+    address,
+    bool,
+    int128,
+    uint128,
+    uint256,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
+    bytes calldata
+  ) external override returns (bytes4) {
+    address pool_ = msg.sender;
+    uint128 midPrice = (bidPriceX64 + askPriceX64) / 2;
+
+    PriceVelocityState storage s = priceVelocityState[pool_];
+    uint128 prevMid = s.lastMidPriceX64;
+    uint64 prevBlock = s.lastUpdateBlock;
+
+    s.lastMidPriceX64 = midPrice;
+    s.lastUpdateBlock = uint64(block.number);
+
+    if (prevMid != 0) {
+      uint64 maxChange = s.maxChangePerBlockE18;
+      if (maxChange != 0) {
+        uint256 blockDiff = block.number - prevBlock;
+
+        uint256 delta = midPrice > prevMid ? uint256(midPrice - prevMid) : uint256(prevMid - midPrice);
+
+        uint256 changeE18 = (delta * 1e18) / uint256(prevMid);
+
+        uint256 actualSq = changeE18 * changeE18;
+        uint256 allowedSq = uint256(maxChange) * uint256(maxChange) * (1 + blockDiff);
+
+        if (actualSq > allowedSq) {
+          revert PriceVelocityExceeded(actualSq, allowedSq);
+        }
+      }
+    }
+
+    return IMetricOmmHooks.beforeSwap.selector;
+  }
+}
