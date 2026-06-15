@@ -7,6 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
+import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {IMetricOmmPoolLiquidityAdder} from "./interfaces/IMetricOmmPoolLiquidityAdder.sol";
 
 /// @title MetricOmmPoolLiquidityAdder
@@ -14,6 +15,9 @@ import {IMetricOmmPoolLiquidityAdder} from "./interfaces/IMetricOmmPoolLiquidity
 ///         which pulls tokens from the user who must have approved this adder beforehand.
 /// @dev Layout follows metric-core conventions:
 ///      constants/state, constructor, external mutators, then internal helpers.
+/// @dev The caller is responsible for supplying a legitimate pool address and other non-malicious parameters.
+///      This contract does not verify the pool against the factory; a malicious pool can request token pulls up to
+///      the caller-provided max caps during callback settlement.
 contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
   using SafeERC20 for IERC20;
 
@@ -70,7 +74,8 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
   /// @notice Add liquidity from a weight vector (used as provisional shares for a probe), then rescale shares by
   ///         `min(max0/need0, max1/need1)` (missing leg treated as unconstrained) and execute the paying add.
   /// @dev The probe always reverts inside the callback with `LiquidityProbe(need0, need1)` so the pool state is
-  ///      unchanged; the second call uses scaled integer shares.
+  ///      unchanged; the second call uses scaled integer shares. Deposit composition follows the pool cursor at
+  ///      probe time; use slot0 cursor bounds to revert when state has been manipulated.
   function addLiquidityWeighted(
     address pool,
     address owner,
@@ -78,11 +83,16 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    int8 minimalCurBin,
+    uint104 minimalPosition,
+    int8 maximalCurBin,
+    uint104 maximalPosition,
     bytes calldata hookData
   ) external override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateOwner(owner);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
+    _validateBinAndBinPosition(pool, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
 
     try IMetricOmmPoolActions(pool).addLiquidity(owner, salt, weightDeltas, abi.encode(KIND_PROBE), hookData) returns (
       uint256, uint256
@@ -98,17 +108,23 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
   /// @notice Add liquidity from a weight vector (used as provisional shares for a probe), then rescale shares by
   ///         `min(max0/need0, max1/need1)` (missing leg treated as unconstrained) and execute the paying add.
   /// @dev The probe always reverts inside the callback with `LiquidityProbe(need0, need1)` so the pool state is
-  ///      unchanged; the second call uses scaled integer shares.
+  ///      unchanged; the second call uses scaled integer shares. Deposit composition follows the pool cursor at
+  ///      probe time; use slot0 cursor bounds to revert when state has been manipulated.
   function addLiquidityWeighted(
     address pool,
     uint80 salt,
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    int8 minimalCurBin,
+    uint104 minimalPosition,
+    int8 maximalCurBin,
+    uint104 maximalPosition,
     bytes calldata hookData
   ) external override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
+    _validateBinAndBinPosition(pool, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
 
     try IMetricOmmPoolActions(pool)
       .addLiquidity(msg.sender, salt, weightDeltas, abi.encode(KIND_PROBE), hookData) returns (
@@ -230,6 +246,31 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint256 n = d.binIdxs.length;
     for (uint256 i; i < n; i++) {
       if (d.shares[i] == 0) revert ZeroWeight();
+    }
+  }
+
+  function _validateBinAndBinPosition(
+    address pool,
+    int8 minimalCurBin,
+    uint104 minimalPosition,
+    int8 maximalCurBin,
+    uint104 maximalPosition
+  ) internal view {
+    if (minimalCurBin > maximalCurBin) {
+      revert CursorOutOfBounds(0, 0, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    }
+
+    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(pool);
+
+    int256 curBin = curBinIdx;
+    if (curBin < minimalCurBin || curBin > maximalCurBin) {
+      revert CursorOutOfBounds(curBinIdx, curPosInBin, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    }
+    if (curBinIdx == minimalCurBin && curPosInBin < minimalPosition) {
+      revert CursorOutOfBounds(curBinIdx, curPosInBin, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    }
+    if (curBinIdx == maximalCurBin && curPosInBin > maximalPosition) {
+      revert CursorOutOfBounds(curBinIdx, curPosInBin, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
     }
   }
 

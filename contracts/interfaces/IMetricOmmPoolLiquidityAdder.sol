@@ -10,6 +10,9 @@ import {
 /// @notice Periphery contract for adding liquidity with caller-funded token settlement.
 /// @dev The position `owner` may differ from `msg.sender`, but token pulls in callback are always sourced from
 ///      `msg.sender` that initiated the add call.
+/// @dev The caller is responsible for supplying a legitimate pool address and other non-malicious parameters.
+///      This contract does not verify the pool against the factory; a malicious pool can request token pulls up to
+///      the caller-provided max caps during callback settlement.
 interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   // ============ Errors ============
 
@@ -48,6 +51,21 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param maxAmount0 Caller cap for token0.
   /// @param maxAmount1 Caller cap for token1.
   error MaxAmountExceeded(uint256 amount0Due, uint256 amount1Due, uint256 maxAmount0, uint256 maxAmount1);
+  /// @notice Pool cursor from slot0 outside caller bounds at probe time.
+  /// @param curBinIdx Current bin index read from slot0.
+  /// @param curPosInBin Current position in bin read from slot0.
+  /// @param minimalCurBin Caller lower bound on curBinIdx.
+  /// @param minimalPosition Minimum curPosInBin when curBinIdx equals minimalCurBin.
+  /// @param maximalCurBin Caller upper bound on curBinIdx.
+  /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin.
+  error CursorOutOfBounds(
+    int8 curBinIdx,
+    uint104 curPosInBin,
+    int8 minimalCurBin,
+    uint104 minimalPosition,
+    int8 maximalCurBin,
+    uint104 maximalPosition
+  );
 
   // ============ Mutating: Liquidity ============
 
@@ -90,12 +108,19 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps.
+  /// @dev Deposit composition follows the pool cursor at probe time. Use cursor bounds from slot0 to fail closed
+  ///      when the pool state has been moved away from the price the caller signed for.
   /// @param pool Target pool address.
   /// @param owner Position owner recorded in pool storage.
   /// @param salt Position salt in owner key-space.
   /// @param weightDeltas Weight vector used for probe then scaled to integer shares.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param minimalCurBin Minimum allowed curBinIdx from slot0; use type(int8).min to disable lower bin bound.
+  /// @param minimalPosition Minimum curPosInBin when curBinIdx equals minimalCurBin.
+  /// @param maximalCurBin Maximum allowed curBinIdx from slot0; use type(int8).max to disable upper bin bound.
+  /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin; use type(uint104).max when
+  ///        unconstrained at maximalCurBin.
   /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
@@ -106,15 +131,26 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    int8 minimalCurBin,
+    uint104 minimalPosition,
+    int8 maximalCurBin,
+    uint104 maximalPosition,
     bytes calldata hookData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps for caller-owned position.
+  /// @dev Deposit composition follows the pool cursor at probe time. Use cursor bounds from slot0 to fail closed
+  ///      when the pool state has been moved away from the price the caller signed for.
   /// @param pool Target pool address.
   /// @param salt Position salt in caller key-space.
   /// @param weightDeltas Weight vector used for probe then scaled to integer shares.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param minimalCurBin Minimum allowed curBinIdx from slot0; use type(int8).min to disable lower bin bound.
+  /// @param minimalPosition Minimum curPosInBin when curBinIdx equals minimalCurBin.
+  /// @param maximalCurBin Maximum allowed curBinIdx from slot0; use type(int8).max to disable upper bin bound.
+  /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin; use type(uint104).max when
+  ///        unconstrained at maximalCurBin.
   /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
@@ -124,6 +160,10 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    int8 minimalCurBin,
+    uint104 minimalPosition,
+    int8 maximalCurBin,
+    uint104 maximalPosition,
     bytes calldata hookData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 }

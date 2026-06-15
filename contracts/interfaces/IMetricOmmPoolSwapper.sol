@@ -6,6 +6,9 @@ import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricO
 /// @title IMetricOmmPoolSwapper
 /// @notice Pool swapper interface: swaps, native wrappers, and quote passthrough.
 /// @dev Error signatures are external API and must remain stable once integrated.
+/// @dev The caller is responsible for supplying a legitimate pool address. This contract does not verify the pool
+///      against the factory; interacting with a malicious pool can cause loss of approved tokens or incidental
+///      ETH/WETH held by the router.
 interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   // ============ Errors ============
 
@@ -58,6 +61,9 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   // ============ Mutating: Spot Swap ============
 
   /// @notice Execute a direct pool swap using swapper callback settlement.
+  /// @dev Advanced path: enforces only a marginal price limit (priceLimitX64), not a minimum output or maximum
+  ///      input amount. Pending transactions can receive less output than expected while staying within the limit.
+  ///      Prefer swapExactInput / swapExactOutput for amount-based slippage protection.
   function swap(
     address pool,
     address recipient,
@@ -68,7 +74,8 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   ) external payable returns (int128 amount0Delta, int128 amount1Delta);
 
   /// @notice Execute a direct pool swap with custom callback data.
-  /// @dev Pass empty `data` and non-empty `hookData` to forward only hook data.
+  /// @dev Advanced path: no amount-based slippage protection; see swap() NatSpec. Pass empty `data` and non-empty
+  ///      `hookData` to forward only hook data.
   function swap(
     address pool,
     address recipient,
@@ -80,6 +87,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
   ) external payable returns (int128 amount0Delta, int128 amount1Delta);
 
   /// @notice Execute a direct pool swap with custom callback data and hook data.
+  /// @dev Advanced path: no amount-based slippage protection; see swap() NatSpec.
   function swap(
     address pool,
     address recipient,
