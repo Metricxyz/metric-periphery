@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {IDepositAllowlistHook} from "../interfaces/hooks/IDepositAllowlistHook.sol";
@@ -32,6 +32,6 @@ contract DepositAllowlistHook is BaseMetricHook, IDepositAllowlistHook {
     if (!allowedDepositor[msg.sender][owner]) {
       revert IMetricOmmPoolActions.NotAllowedToDeposit();
     }
-    return IMetricOmmHooks.beforeAddLiquidity.selector;
+    return IMetricOmmExtensions.beforeAddLiquidity.selector;
   }
 }

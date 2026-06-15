@@ -2,7 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
@@ -64,7 +64,7 @@ contract OracleValueStopLossHook is BaseMetricHook, IOracleValueStopLossHook {
     emit OracleStopLossDrawdownSet(pool, drawdownE6);
     emit OracleStopLossDecaySet(pool, decayPerSecondE8);
     emit OracleStopLossTimelockSet(pool, timelock);
-    return IMetricOmmHooks.initialize.selector;
+    return IMetricOmmExtensions.initialize.selector;
   }
 
   /// @notice Current (decayed) watermarks — what the next check compares against.
@@ -200,7 +200,7 @@ contract OracleValueStopLossHook is BaseMetricHook, IOracleValueStopLossHook {
     // Only the factory can initialize, so an initialized msg.sender is a legit pool — no onlyPool needed.
     _requireInitialized(msg.sender);
     _afterSwapOracleStopLoss(msg.sender, packedSlot0Initial, packedSlot0Final, bidPriceX64, askPriceX64, zeroForOne);
-    return IMetricOmmHooks.afterSwap.selector;
+    return IMetricOmmExtensions.afterSwap.selector;
   }
 
   /// @dev `zeroForOne` forwarded from the swap params (true = token0 in, token1 out of the pool).
