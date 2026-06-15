@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-/// @title IPriceVelocityGuardHook
+/// @title IPriceVelocityGuardExtension
 /// @notice Per-pool oracle mid-price velocity guard admin and read API.
-interface IPriceVelocityGuardHook {
+interface IPriceVelocityGuardExtension {
   struct PriceVelocityState {
     uint128 lastMidPriceX64;
     uint64 lastUpdateBlock;

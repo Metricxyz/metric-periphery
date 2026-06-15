@@ -3,8 +3,8 @@ pragma solidity ^0.8.35;
 
 import {PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 
-/// @dev Minimal pool stub for hook unit tests; only `factory` is read by `BaseMetricHook.onlyPool`.
-contract MockHookPool {
+/// @dev Minimal pool stub for extension unit tests; only `factory` is read by `BaseMetricExtension.onlyPool`.
+contract MockExtensionPool {
   address public immutable factory;
 
   constructor(address factory_) {

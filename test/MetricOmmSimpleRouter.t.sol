@@ -34,7 +34,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -61,7 +61,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: type(uint128).max,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -88,7 +88,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -116,7 +116,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: type(uint128).max,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -142,7 +142,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -163,9 +163,9 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     pools[0] = address(pool);
     pools[1] = address(pool12);
 
-    bytes[] memory hookDatas = new bytes[](2);
-    hookDatas[0] = "";
-    hookDatas[1] = "";
+    bytes[] memory extensionDatas = new bytes[](2);
+    extensionDatas[0] = "";
+    extensionDatas[1] = "";
 
     uint256 token2Before = token2.balanceOf(recipient);
     uint256 wethBefore = weth.balanceOf(swapper);
@@ -175,7 +175,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountIn: amountIn,
         amountOutMinimum: 0,
@@ -209,7 +209,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     pools[1] = address(pool12);
     pools[2] = address(pool23);
 
-    bytes[] memory hookDatas = new bytes[](3);
+    bytes[] memory extensionDatas = new bytes[](3);
 
     uint128 amountIn = 1_500;
     uint256 token3Before = token3.balanceOf(recipient);
@@ -219,7 +219,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 7,
         amountIn: amountIn,
         amountOutMinimum: 0,
@@ -245,7 +245,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     pools[0] = address(pool);
     pools[1] = address(pool12);
 
-    bytes[] memory hookDatas = new bytes[](2);
+    bytes[] memory extensionDatas = new bytes[](2);
 
     uint256 wethBefore = weth.balanceOf(swapper);
     uint256 token2Before = token2.balanceOf(recipient);
@@ -255,7 +255,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountOut: amountOut,
         amountInMaximum: 10_000,
@@ -292,7 +292,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     pools[1] = address(pool12);
     pools[2] = address(pool23);
 
-    bytes[] memory hookDatas = new bytes[](3);
+    bytes[] memory extensionDatas = new bytes[](3);
 
     uint256 wethBefore = weth.balanceOf(swapper);
     uint256 token3Before = token3.balanceOf(recipient);
@@ -302,7 +302,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 7,
         amountOut: amountOut,
         amountInMaximum: 10_000,
@@ -335,7 +335,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -356,7 +356,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -374,7 +374,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -393,7 +393,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -411,7 +411,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -428,7 +428,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -441,14 +441,14 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     address[] memory pools = new address[](2);
     pools[0] = address(pool);
     pools[1] = address(pool12);
-    bytes[] memory hookDatas = new bytes[](2);
+    bytes[] memory extensionDatas = new bytes[](2);
 
     vm.prank(swapper);
     uint256 amountOut = router.exactInput(
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountIn: 100,
         amountOutMinimum: 0,
@@ -465,7 +465,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountIn: 100,
         amountOutMinimum: uint128(amountOut + 1),
@@ -483,14 +483,14 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     address[] memory pools = new address[](2);
     pools[0] = address(pool);
     pools[1] = address(pool12);
-    bytes[] memory hookDatas = new bytes[](2);
+    bytes[] memory extensionDatas = new bytes[](2);
 
     vm.prank(swapper);
     uint256 amountIn = router.exactOutput(
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountOut: 100,
         amountInMaximum: type(uint128).max,
@@ -505,7 +505,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountOut: 100,
         amountInMaximum: uint128(amountIn - 1),
@@ -531,7 +531,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: deadline,
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -542,7 +542,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     tokens[1] = address(token1);
     address[] memory pools = new address[](1);
     pools[0] = address(pool);
-    bytes[] memory hookDatas = new bytes[](1);
+    bytes[] memory extensionDatas = new bytes[](1);
 
     uint256 deadline = 200;
     vm.warp(201);
@@ -552,7 +552,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 1,
         amountIn: 100,
         amountOutMinimum: 0,
@@ -578,7 +578,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: deadline,
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -589,7 +589,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     tokens[1] = address(token1);
     address[] memory pools = new address[](1);
     pools[0] = address(pool);
-    bytes[] memory hookDatas = new bytes[](1);
+    bytes[] memory extensionDatas = new bytes[](1);
 
     uint256 deadline = 400;
     vm.warp(401);
@@ -599,7 +599,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 1,
         amountOut: 100,
         amountInMaximum: 10_000,
@@ -616,7 +616,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     tokens[0] = address(weth);
     address[] memory pools = new address[](1);
     pools[0] = address(pool);
-    bytes[] memory hookDatas = new bytes[](1);
+    bytes[] memory extensionDatas = new bytes[](1);
 
     vm.prank(swapper);
     vm.expectRevert(IMetricOmmSimpleRouter.InvalidPath.selector);
@@ -624,7 +624,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 1,
         amountIn: 100,
         amountOutMinimum: 0,
@@ -641,7 +641,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     address[] memory pools = new address[](2);
     pools[0] = address(pool);
     pools[1] = address(pool12);
-    bytes[] memory hookDatas = new bytes[](2);
+    bytes[] memory extensionDatas = new bytes[](2);
 
     vm.prank(swapper);
     vm.expectRevert(IMetricOmmSimpleRouter.InvalidPath.selector);
@@ -649,7 +649,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 1,
         amountIn: 100,
         amountOutMinimum: 0,
@@ -659,7 +659,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     );
   }
 
-  function test_exactInput_revertsInvalidPath_hookDataMismatch() public {
+  function test_exactInput_revertsInvalidPath_extensionDataMismatch() public {
     address[] memory tokens = new address[](3);
     tokens[0] = address(weth);
     tokens[1] = address(token1);
@@ -667,7 +667,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     address[] memory pools = new address[](2);
     pools[0] = address(pool);
     pools[1] = address(pool12);
-    bytes[] memory hookDatas = new bytes[](1);
+    bytes[] memory extensionDatas = new bytes[](1);
 
     vm.prank(swapper);
     vm.expectRevert(IMetricOmmSimpleRouter.InvalidPath.selector);
@@ -675,7 +675,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactInputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountIn: 100,
         amountOutMinimum: 0,
@@ -690,7 +690,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     tokens[0] = address(weth);
     address[] memory pools = new address[](1);
     pools[0] = address(pool);
-    bytes[] memory hookDatas = new bytes[](1);
+    bytes[] memory extensionDatas = new bytes[](1);
 
     vm.prank(swapper);
     vm.expectRevert(IMetricOmmSimpleRouter.InvalidPath.selector);
@@ -698,7 +698,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 1,
         amountOut: 100,
         amountInMaximum: 10_000,
@@ -744,7 +744,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: type(uint128).max,
         recipient: swapper,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -767,7 +767,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -787,7 +787,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
     router.exactInputSingle(
@@ -801,7 +801,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
     vm.stopPrank();
@@ -827,7 +827,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
   }
@@ -845,7 +845,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     pools[0] = address(wrongPool);
     pools[1] = address(pool12);
 
-    bytes[] memory hookDatas = new bytes[](2);
+    bytes[] memory extensionDatas = new bytes[](2);
 
     vm.prank(swapper);
     vm.expectRevert(
@@ -857,7 +857,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
       IMetricOmmSimpleRouter.ExactOutputParams({
         tokens: tokens,
         pools: pools,
-        hookDatas: hookDatas,
+        extensionDatas: extensionDatas,
         zeroForOneBitMap: 3,
         amountOut: 500,
         amountInMaximum: 10_000,
@@ -894,7 +894,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: priceLimit,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -928,7 +928,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: priceLimit,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 
@@ -953,7 +953,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         priceLimitX64: type(uint128).max,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
   }

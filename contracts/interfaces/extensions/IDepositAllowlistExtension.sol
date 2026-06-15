@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-/// @title IDepositAllowlistHook
+/// @title IDepositAllowlistExtension
 /// @notice Per-pool deposit allowlist admin and read API.
-interface IDepositAllowlistHook {
+interface IDepositAllowlistExtension {
   event AllowedToDepositSet(address indexed pool, address indexed depositor, bool allowed);
 
   function allowedDepositor(address pool, address depositor) external view returns (bool);

@@ -4,28 +4,28 @@ Core smart contracts for the Metric OMM protocol: oracle-based pools with bin-ba
 
 ## Overview
 
-Pools use external price providers for bid/ask, maintain liquidity in configurable bins, and enforce pause levels and optional deposit/swap allowlists. Integrators typically interact via **`IMetricOmmPool`** (composed actions, fee collection, and factory hooks).
+Pools use external price providers for bid/ask, maintain liquidity in configurable bins, and enforce pause levels and optional deposit/swap allowlists. Integrators typically interact via **`IMetricOmmPool`** (composed actions, fee collection, and factory extensions).
 
 ## Contracts
 
 ### Pool and factory
 
-- **MetricOmmPool.sol** — Main pool (liquidity, swap, simulation, factory/protocol hooks).
+- **MetricOmmPool.sol** — Main pool (liquidity, swap, simulation, factory/protocol extensions).
 - **MetricOmmPoolFactory.sol** — Pool registry, fee caps, `createPool`, deployer wiring, pools' administrative actions
 - **MetricOmmPoolDeployer.sol** — CREATE2-style deployment of pool bytecode (factory-only).
 
 ### Supporting contracts
 
 - **Extsload.sol** — `EXTSLOAD`-based storage reads (forked from Uniswap v4-style pattern); pool layout must stay aligned with **PoolStateLibrary**.
-- **Hooks** — Optional per-pool `IMetricOmmHooks` (`hooks` + `hooksPermissions` at deploy). Product hooks live in **metric-periphery**; core tests plumbing via `test/mocks/MockMetricHook.sol` and `test/mocks/hooks/GateHook.sol` (see `test/README.hooks.md`).
+- **Extensions** — Optional per-pool `IMetricOmmExtensions` (`extensions` + `extensionOrders` at deploy). Product extensions live in **metric-periphery**; core tests plumbing via `test/mocks/MockMetricExtension.sol` and `test/mocks/extensions/GateExtension.sol` (see `test/README.extensions.md`).
 
 ### Libraries
 
 - **SwapMath.sol** — Pure swap/step math.
 - **BinDataLibrary.sol** — Bin encoding helpers.
 - **PoolStateLibrary.sol** — Slot helpers for EXTSLOAD readers; must match **MetricOmmPool** storage packing.
-- **Slot0Library.sol** — Pack/unpack storage slot 0 (`packedSlot0` on swap hooks).
-- **MetricHooks.sol** — Hook permission flags and `callHook` helpers.
+- **Slot0Library.sol** — Pack/unpack storage slot 0 (`packedSlot0` on swap extensions).
+- **MetricExtensions.sol** — Extension permission flags and `callExtension` helpers.
 
 ## Requirements
 

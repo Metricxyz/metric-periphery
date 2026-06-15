@@ -10,7 +10,7 @@ import {ISelfPermit} from "./ISelfPermit.sol";
 /// @dev Scope: ERC-20 routes only. No native ETH, WETH wrap/unwrap, on-chain quotes, sweep, or refund helpers.
 ///      Callers supply pool addresses at their own risk; implementations do not verify factory provenance,
 ///      path token connectivity, or single-hop `tokenIn` / `tokenOut` against pool immutables.
-///      `pools[i]` is intended to connect `tokens[i]` and `tokens[i+1]`; `hookDatas[i]` is passed to `pools[i]`.
+///      `pools[i]` is intended to connect `tokens[i]` and `tokens[i+1]`; `extensionDatas[i]` is passed to `pools[i]`.
 ///      Multihop exact-output executes `pools` from last to first; `amountOut` is `tokens[tokens.length - 1]`.
 ///      Multihop paths omit per-hop price limits; slippage is controlled solely by `amountOutMinimum` (exact input)
 ///      or `amountInMaximum` (exact output).
@@ -66,7 +66,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///        `!zeroForOne`: `type(uint128).max` is unconstrained upper bound. Opposite sentinels revert.
   /// @param recipient Address that receives the output token.
   /// @param deadline Timestamp after which the swap reverts.
-  /// @param hookData Opaque bytes forwarded to the pool swap hook.
+  /// @param extensionData Opaque bytes forwarded to the pool swap extension.
   struct ExactInputSingleParams {
     address pool;
     bool zeroForOne;
@@ -77,7 +77,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
     uint128 priceLimitX64;
     address recipient;
     uint256 deadline;
-    bytes hookData;
+    bytes extensionData;
   }
 
   /// @notice Multihop exact-input swap parameters.
@@ -85,7 +85,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///      The caller must ensure `tokens` and `pools` describe a valid connected route.
   /// @param tokens Path tokens `[t0, t1, …, tn]`.
   /// @param pools Pool between each adjacent token pair; length must be `tokens.length - 1`.
-  /// @param hookDatas Hook payload per pool; length must match `pools`.
+  /// @param extensionDatas Extension payload per pool; length must match `pools`.
   /// @param zeroForOneBitMap Bit `i` is the swap direction for `pools[i]`; supports up to 256 hops.
   /// @param amountIn Exact input amount of `tokens[0]`.
   /// @param amountOutMinimum Minimum output amount of `tokens[tokens.length - 1]`.
@@ -94,7 +94,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   struct ExactInputParams {
     address[] tokens;
     address[] pools;
-    bytes[] hookDatas;
+    bytes[] extensionDatas;
     uint256 zeroForOneBitMap;
     uint128 amountIn;
     uint128 amountOutMinimum;
@@ -113,7 +113,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///        `!zeroForOne`: `type(uint128).max` is unconstrained upper bound. Opposite sentinels revert.
   /// @param recipient Address that receives the output token.
   /// @param deadline Timestamp after which the swap reverts.
-  /// @param hookData Opaque bytes forwarded to the pool swap hook.
+  /// @param extensionData Opaque bytes forwarded to the pool swap extension.
   struct ExactOutputSingleParams {
     address pool;
     bool zeroForOne;
@@ -124,7 +124,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
     uint128 priceLimitX64;
     address recipient;
     uint256 deadline;
-    bytes hookData;
+    bytes extensionData;
   }
 
   /// @notice Multihop exact-output swap parameters.
@@ -133,7 +133,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///      Execution starts at `pools[pools.length - 1]` and walks toward `pools[0]`.
   /// @param tokens Path tokens `[t0, t1, …, tn]`.
   /// @param pools Pool between each adjacent token pair; length must be `tokens.length - 1`.
-  /// @param hookDatas Hook payload per pool; length must match `pools`.
+  /// @param extensionDatas Extension payload per pool; length must match `pools`.
   /// @param zeroForOneBitMap Bit `i` is the swap direction for `pools[i]`; supports up to 256 hops.
   /// @param amountOut Exact output amount of `tokens[tokens.length - 1]`.
   /// @param amountInMaximum Maximum input amount of `tokens[0]`.
@@ -142,7 +142,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   struct ExactOutputParams {
     address[] tokens;
     address[] pools;
-    bytes[] hookDatas;
+    bytes[] extensionDatas;
     uint256 zeroForOneBitMap;
     uint128 amountOut;
     uint128 amountInMaximum;

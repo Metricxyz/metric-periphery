@@ -118,7 +118,7 @@ contract ReentrantPoolForSimpleRouter {
         priceLimitX64: 0,
         recipient: msg.sender,
         deadline: type(uint256).max,
-        hookData: ""
+        extensionData: ""
       })
       ) {
       nestedCompleted = true;

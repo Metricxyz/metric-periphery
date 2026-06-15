@@ -7,10 +7,10 @@ import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmP
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
 import {PoolSlot0} from "@metric-core/types/Slot0.sol";
-import {IOracleValueStopLossHook} from "../interfaces/hooks/IOracleValueStopLossHook.sol";
-import {BaseMetricHook} from "./base/BaseMetricHook.sol";
+import {IOracleValueStopLossExtension} from "../interfaces/extensions/IOracleValueStopLossExtension.sol";
+import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 
-/// @title OracleValueStopLossHook
+/// @title OracleValueStopLossExtension
 /// @notice Tracks per-bin value per share in token0 and token1 terms at the oracle mid,
 ///         against decaying high watermarks. Drawdown and decay changes are timelocked so LPs
 ///         can react; monitor at least as often as the timelock or trust the pool admin.
@@ -26,7 +26,7 @@ import {BaseMetricHook} from "./base/BaseMetricHook.sol";
 ///
 ///      Watermarks decay linearly at decayPerSecondE8 (lazy, per bin). Guarantee: value per
 ///      share at oracle marks cannot fall faster than drawdown (one-time) + decay * t (ongoing).
-contract OracleValueStopLossHook is BaseMetricHook, IOracleValueStopLossHook {
+contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLossExtension {
   uint256 private constant Q64 = 1 << 64;
   uint256 private constant E6 = 1e6;
   uint256 private constant E8 = 1e8;
@@ -39,13 +39,13 @@ contract OracleValueStopLossHook is BaseMetricHook, IOracleValueStopLossHook {
   mapping(address pool => PendingHighWatermarks) public pendingHighWatermark;
   mapping(address pool => mapping(int8 binIdx => BinHighWatermarks)) public highWatermarks;
 
-  constructor(address factory_) BaseMetricHook(factory_) {}
+  constructor(address factory_) BaseMetricExtension(factory_) {}
 
   /// @notice Called once by the factory at pool creation.
   ///         `data` = `abi.encode(uint32 drawdownE6, uint32 decayPerSecondE8, uint32 timelockSeconds)`.
   function initialize(address pool, bytes calldata data)
     external
-    override(BaseMetricHook, IOracleValueStopLossHook)
+    override(BaseMetricExtension, IOracleValueStopLossExtension)
     onlyFactory
     returns (bytes4)
   {

@@ -41,7 +41,7 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
     router.multicall(calls);
@@ -99,7 +99,7 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
     calls[1] = abi.encodeWithSelector(
@@ -114,7 +114,7 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
     bytes[] memory results = router.multicall(calls);
@@ -140,7 +140,7 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
     calls[1] = abi.encodeWithSelector(
@@ -155,7 +155,7 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
         priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
-        hookData: ""
+        extensionData: ""
       })
     );
 

@@ -8,11 +8,11 @@ import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {Slot0Library} from "@metric-core/libraries/Slot0Library.sol";
 import {AllowlistFactoryStub} from "../AllowlistFactoryStub.sol";
 import {PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
-import {OracleValueStopLossHook} from "../../contracts/hooks/OracleValueStopLossHook.sol";
-import {IOracleValueStopLossHook} from "../../contracts/interfaces/hooks/IOracleValueStopLossHook.sol";
-import {SubhookUtils} from "../../contracts/hooks/base/SubhookUtils.sol";
+import {BaseMetricExtension} from "../../contracts/extensions/base/BaseMetricExtension.sol";
+import {OracleValueStopLossExtension} from "../../contracts/extensions/OracleValueStopLossExtension.sol";
+import {IOracleValueStopLossExtension} from "../../contracts/interfaces/extensions/IOracleValueStopLossExtension.sol";
 
-contract MockHookExtsloadPool is Extsload {
+contract MockExtensionExtsloadPool is Extsload {
   address public immutable factory;
   uint256 public immutable minimalMintableLiquidity;
 
@@ -27,7 +27,7 @@ contract MockHookExtsloadPool is Extsload {
   }
 }
 
-contract OracleValueStopLossSubhookTest is Test {
+contract OracleValueStopLossSubExtensionTest is Test {
   uint256 private constant Q64 = 1 << 64;
   uint256 private constant E6 = 1e6;
   uint256 private constant E8 = 1e8;
@@ -36,16 +36,16 @@ contract OracleValueStopLossSubhookTest is Test {
   uint256 private constant BIN_SHARES = 10_000;
 
   AllowlistFactoryStub factoryStub;
-  OracleValueStopLossHook hook;
-  MockHookExtsloadPool mockPool;
+  OracleValueStopLossExtension extension;
+  MockExtensionExtsloadPool mockPool;
 
   address admin = makeAddr("admin");
 
   function setUp() public {
     factoryStub = new AllowlistFactoryStub();
-    mockPool = new MockHookExtsloadPool(address(factoryStub), MIN_SHARES);
+    mockPool = new MockExtensionExtsloadPool(address(factoryStub), MIN_SHARES);
     factoryStub.setPoolAdmin(address(mockPool), admin);
-    hook = new OracleValueStopLossHook(address(factoryStub));
+    extension = new OracleValueStopLossExtension(address(factoryStub));
     _initPool(address(mockPool), 0, 0, 0);
   }
 
@@ -53,12 +53,12 @@ contract OracleValueStopLossSubhookTest is Test {
 
   function _initPool(address pool, uint32 drawdownE6, uint32 decayE8, uint32 timelock) internal {
     vm.prank(address(factoryStub));
-    hook.initialize(pool, abi.encode(drawdownE6, decayE8, timelock));
+    extension.initialize(pool, abi.encode(drawdownE6, decayE8, timelock));
   }
 
   function _proposeAndExecuteTimelock(uint32 timelock) internal {
-    hook.proposeOracleStopLossTimelock(address(mockPool), timelock);
-    hook.executeOracleStopLossTimelock(address(mockPool));
+    extension.proposeOracleStopLossTimelock(address(mockPool), timelock);
+    extension.executeOracleStopLossTimelock(address(mockPool));
   }
 
   function _packBinState(uint104 t0, uint104 t1) internal pure returns (bytes32) {
@@ -97,7 +97,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
   function _exposeStopLoss(int8 loBin, int8 hiBin, uint128 priceX64, bool zeroForOne) internal {
     vm.prank(address(mockPool));
-    hook.afterSwap(
+    extension.afterSwap(
       address(0), address(0), zeroForOne, 0, 0, _packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64, 0, 0, 0, ""
     );
   }
@@ -127,26 +127,26 @@ contract OracleValueStopLossSubhookTest is Test {
   }
 
   function _proposeAndExecuteDrawdown(uint256 drawdownE6) internal {
-    hook.proposeOracleStopLossDrawdown(address(mockPool), drawdownE6);
-    hook.executeOracleStopLossDrawdown(address(mockPool));
+    extension.proposeOracleStopLossDrawdown(address(mockPool), drawdownE6);
+    extension.executeOracleStopLossDrawdown(address(mockPool));
   }
 
   function _proposeAndExecuteDecay(uint256 decayE8) internal {
-    hook.proposeOracleStopLossDecay(address(mockPool), decayE8);
-    hook.executeOracleStopLossDecay(address(mockPool));
+    extension.proposeOracleStopLossDecay(address(mockPool), decayE8);
+    extension.executeOracleStopLossDecay(address(mockPool));
   }
 
   function _proposeAndExecuteWatermarks(int8 binIdx, uint104 t0, uint104 t1) internal {
-    hook.proposeOracleStopLossHighWatermarks(address(mockPool), binIdx, t0, t1);
-    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    extension.proposeOracleStopLossHighWatermarks(address(mockPool), binIdx, t0, t1);
+    extension.executeOracleStopLossHighWatermarks(address(mockPool));
   }
 
   function _drawdown() internal view returns (uint256 v) {
-    (v,,,) = hook.oracleStopLossConfig(address(mockPool));
+    (v,,,) = extension.oracleStopLossConfig(address(mockPool));
   }
 
   function _decay() internal view returns (uint256 v) {
-    (, v,,) = hook.oracleStopLossConfig(address(mockPool));
+    (, v,,) = extension.oracleStopLossConfig(address(mockPool));
   }
 
   function _configure(uint256 drawdownE6, uint256 decayE8) internal {
@@ -166,28 +166,30 @@ contract OracleValueStopLossSubhookTest is Test {
 
     address rando = makeAddr("rando");
     vm.prank(rando);
-    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
-    hook.proposeOracleStopLossDrawdown(address(mockPool), 100_000);
+    vm.expectRevert(abi.encodeWithSelector(BaseMetricExtension.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
+    extension.proposeOracleStopLossDrawdown(address(mockPool), 100_000);
   }
 
   function test_drawdownCannotExceed1e6() public {
     vm.prank(admin);
-    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossDrawdownTooLarge.selector, E6 + 1));
-    hook.proposeOracleStopLossDrawdown(address(mockPool), E6 + 1);
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossDrawdownTooLarge.selector, E6 + 1)
+    );
+    extension.proposeOracleStopLossDrawdown(address(mockPool), E6 + 1);
   }
 
   function test_decayCannotExceed1e8() public {
     vm.prank(admin);
-    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossDecayTooLarge.selector, E8 + 1));
-    hook.proposeOracleStopLossDecay(address(mockPool), E8 + 1);
+    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossDecayTooLarge.selector, E8 + 1));
+    extension.proposeOracleStopLossDecay(address(mockPool), E8 + 1);
   }
 
   function test_initialize_setsConfig() public {
-    OracleValueStopLossHook freshHook = new OracleValueStopLossHook(address(factoryStub));
-    MockHookExtsloadPool freshPool = new MockHookExtsloadPool(address(factoryStub), MIN_SHARES);
+    OracleValueStopLossExtension freshExtension = new OracleValueStopLossExtension(address(factoryStub));
+    MockExtensionExtsloadPool freshPool = new MockExtensionExtsloadPool(address(factoryStub), MIN_SHARES);
     vm.prank(address(factoryStub));
-    freshHook.initialize(address(freshPool), abi.encode(uint32(50_000), uint32(58), uint32(3 days)));
-    (uint32 dd, uint32 decay, uint32 tl, bool initialized) = freshHook.oracleStopLossConfig(address(freshPool));
+    freshExtension.initialize(address(freshPool), abi.encode(uint32(50_000), uint32(58), uint32(3 days)));
+    (uint32 dd, uint32 decay, uint32 tl, bool initialized) = freshExtension.oracleStopLossConfig(address(freshPool));
     assertEq(dd, 50_000);
     assertEq(decay, 58);
     assertEq(tl, 3 days);
@@ -197,53 +199,57 @@ contract OracleValueStopLossSubhookTest is Test {
   function test_cannotReinitialize() public {
     vm.prank(address(factoryStub));
     vm.expectRevert(
-      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossAlreadyInitialized.selector, address(mockPool))
+      abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossAlreadyInitialized.selector, address(mockPool))
     );
-    hook.initialize(address(mockPool), abi.encode(uint32(0), uint32(0), uint32(0)));
+    extension.initialize(address(mockPool), abi.encode(uint32(0), uint32(0), uint32(0)));
   }
 
   function test_timelockUpdateDelayedByCurrentTimelock() public {
-    OracleValueStopLossHook freshHook = new OracleValueStopLossHook(address(factoryStub));
-    MockHookExtsloadPool freshPool = new MockHookExtsloadPool(address(factoryStub), MIN_SHARES);
+    OracleValueStopLossExtension freshExtension = new OracleValueStopLossExtension(address(factoryStub));
+    MockExtensionExtsloadPool freshPool = new MockExtensionExtsloadPool(address(factoryStub), MIN_SHARES);
     factoryStub.setPoolAdmin(address(freshPool), admin);
     vm.prank(address(factoryStub));
-    freshHook.initialize(address(freshPool), abi.encode(uint32(0), uint32(0), uint32(1 days)));
+    freshExtension.initialize(address(freshPool), abi.encode(uint32(0), uint32(0), uint32(1 days)));
 
     vm.startPrank(admin);
-    freshHook.proposeOracleStopLossTimelock(address(freshPool), uint32(2 days));
+    freshExtension.proposeOracleStopLossTimelock(address(freshPool), uint32(2 days));
     vm.expectRevert(
       abi.encodeWithSelector(
-        IOracleValueStopLossHook.OracleStopLossTimelockNotElapsed.selector, block.timestamp + 1 days, block.timestamp
+        IOracleValueStopLossExtension.OracleStopLossTimelockNotElapsed.selector,
+        block.timestamp + 1 days,
+        block.timestamp
       )
     );
-    freshHook.executeOracleStopLossTimelock(address(freshPool));
+    freshExtension.executeOracleStopLossTimelock(address(freshPool));
     vm.warp(block.timestamp + 1 days);
-    freshHook.executeOracleStopLossTimelock(address(freshPool));
+    freshExtension.executeOracleStopLossTimelock(address(freshPool));
     vm.stopPrank();
-    (,, uint32 tl,) = freshHook.oracleStopLossConfig(address(freshPool));
+    (,, uint32 tl,) = freshExtension.oracleStopLossConfig(address(freshPool));
     assertEq(tl, 2 days);
   }
 
   function test_drawdownTimelockDelaysExecution() public {
     vm.startPrank(admin);
     _proposeAndExecuteTimelock(uint32(1 days));
-    hook.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
+    extension.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IOracleValueStopLossHook.OracleStopLossTimelockNotElapsed.selector, block.timestamp + 1 days, block.timestamp
+        IOracleValueStopLossExtension.OracleStopLossTimelockNotElapsed.selector,
+        block.timestamp + 1 days,
+        block.timestamp
       )
     );
-    hook.executeOracleStopLossDrawdown(address(mockPool));
+    extension.executeOracleStopLossDrawdown(address(mockPool));
     vm.warp(block.timestamp + 1 days);
-    hook.executeOracleStopLossDrawdown(address(mockPool));
+    extension.executeOracleStopLossDrawdown(address(mockPool));
     vm.stopPrank();
     assertEq(_drawdown(), 50_000);
   }
 
   function test_decayTimelockZeroExecutesImmediately() public {
     vm.startPrank(admin);
-    hook.proposeOracleStopLossDecay(address(mockPool), 58);
-    hook.executeOracleStopLossDecay(address(mockPool));
+    extension.proposeOracleStopLossDecay(address(mockPool), 58);
+    extension.executeOracleStopLossDecay(address(mockPool));
     vm.stopPrank();
     assertEq(_decay(), 58);
   }
@@ -251,12 +257,12 @@ contract OracleValueStopLossSubhookTest is Test {
   function test_cancelPendingDrawdown() public {
     vm.startPrank(admin);
     _proposeAndExecuteTimelock(uint32(1 days));
-    hook.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
-    hook.cancelOracleStopLossDrawdown(address(mockPool));
+    extension.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
+    extension.cancelOracleStopLossDrawdown(address(mockPool));
     vm.expectRevert(
-      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossNoPendingDrawdown.selector, address(mockPool))
+      abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossNoPendingDrawdown.selector, address(mockPool))
     );
-    hook.executeOracleStopLossDrawdown(address(mockPool));
+    extension.executeOracleStopLossDrawdown(address(mockPool));
     vm.stopPrank();
   }
 
@@ -267,37 +273,41 @@ contract OracleValueStopLossSubhookTest is Test {
 
     address rando = makeAddr("rando");
     vm.prank(rando);
-    vm.expectRevert(abi.encodeWithSelector(SubhookUtils.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
-    hook.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
+    vm.expectRevert(abi.encodeWithSelector(BaseMetricExtension.OnlyPoolAdmin.selector, address(mockPool), rando, admin));
+    extension.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
   }
 
   function test_watermarkTimelockDelaysExecution() public {
     vm.startPrank(admin);
     _proposeAndExecuteTimelock(uint32(1 days));
-    hook.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 11, 22);
+    extension.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 11, 22);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IOracleValueStopLossHook.OracleStopLossTimelockNotElapsed.selector, block.timestamp + 1 days, block.timestamp
+        IOracleValueStopLossExtension.OracleStopLossTimelockNotElapsed.selector,
+        block.timestamp + 1 days,
+        block.timestamp
       )
     );
-    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    extension.executeOracleStopLossHighWatermarks(address(mockPool));
     vm.warp(block.timestamp + 1 days);
-    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    extension.executeOracleStopLossHighWatermarks(address(mockPool));
     vm.stopPrank();
 
-    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0, 11);
     assertEq(hwm1, 22);
   }
 
   function test_cancelPendingWatermarks() public {
     vm.startPrank(admin);
-    hook.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
-    hook.cancelOracleStopLossHighWatermarks(address(mockPool));
+    extension.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 1, 2);
+    extension.cancelOracleStopLossHighWatermarks(address(mockPool));
     vm.expectRevert(
-      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossNoPendingHighWatermark.selector, address(mockPool))
+      abi.encodeWithSelector(
+        IOracleValueStopLossExtension.OracleStopLossNoPendingHighWatermark.selector, address(mockPool)
+      )
     );
-    hook.executeOracleStopLossHighWatermarks(address(mockPool));
+    extension.executeOracleStopLossHighWatermarks(address(mockPool));
     vm.stopPrank();
   }
 
@@ -321,7 +331,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     _exposeStopLoss(0, 0, price, false);
 
-    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0, _computeMetricToken0(t0, t1, shares, price));
     assertEq(hwm1, _computeMetricToken1(t0, t1, shares, price));
   }
@@ -343,11 +353,13 @@ contract OracleValueStopLossSubhookTest is Test {
     uint128 highPrice = uint128(2 * Q64);
 
     uint256 m0 = _computeMetricToken0(t0, t1, shares, highPrice);
-    (uint256 hwm0,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0,) = extension.currentHighWatermarks(address(mockPool), 0);
     uint256 threshold = hwm0 * (E6 - 50_000) / E6;
 
     vm.expectRevert(
-      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossTriggered.selector, int8(0), true, m0, threshold)
+      abi.encodeWithSelector(
+        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int8(0), true, m0, threshold
+      )
     );
     _exposeStopLoss(0, 0, highPrice, true);
 
@@ -370,11 +382,13 @@ contract OracleValueStopLossSubhookTest is Test {
     uint128 lowPrice = uint128(Q64 / 2);
 
     uint256 m1 = _computeMetricToken1(t0, t1, shares, lowPrice);
-    (, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     uint256 threshold = hwm1 * (E6 - 50_000) / E6;
 
     vm.expectRevert(
-      abi.encodeWithSelector(IOracleValueStopLossHook.OracleStopLossTriggered.selector, int8(0), false, m1, threshold)
+      abi.encodeWithSelector(
+        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int8(0), false, m1, threshold
+      )
     );
     _exposeStopLoss(0, 0, lowPrice, false);
 
@@ -439,7 +453,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     _exposeStopLoss(0, 0, price, true);
 
-    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     uint256 cur0 = _computeMetricToken0(800, 800, BIN_SHARES, price);
     uint256 cur1 = _computeMetricToken1(800, 800, BIN_SHARES, price);
     assertGe(hwm0, cur0);
@@ -485,7 +499,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     _exposeStopLoss(0, 0, uint128(Q64), false);
 
-    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0, type(uint104).max);
     assertEq(hwm1, type(uint104).max);
   }
@@ -503,7 +517,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     _exposeStopLoss(0, 0, price, false);
 
-    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0, _computeMetricToken0(t0, t1, shares, price));
     assertEq(hwm1, _computeMetricToken1(t0, t1, shares, price));
   }
@@ -519,12 +533,12 @@ contract OracleValueStopLossSubhookTest is Test {
 
     vm.warp(block.timestamp + 2);
 
-    (uint256 hwm0Before,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0Before,) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0Before, 0);
 
     _exposeStopLoss(0, 0, price, false);
 
-    (uint256 hwm0After,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0After,) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0After, _computeMetricToken0(1000, 1000, BIN_SHARES, price));
   }
 
@@ -596,8 +610,8 @@ contract OracleValueStopLossSubhookTest is Test {
     _exposeStopLoss(0, 1, price, false);
 
     uint256 expectedT0 = _computeMetricToken0(1000, 1000, BIN_SHARES, price);
-    (uint256 hwm0Bin0,) = hook.currentHighWatermarks(address(mockPool), 0);
-    (uint256 hwm0Bin1,) = hook.currentHighWatermarks(address(mockPool), 1);
+    (uint256 hwm0Bin0,) = extension.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0Bin1,) = extension.currentHighWatermarks(address(mockPool), 1);
     assertEq(hwm0Bin0, expectedT0);
     assertEq(hwm0Bin1, expectedT0);
   }
@@ -608,12 +622,12 @@ contract OracleValueStopLossSubhookTest is Test {
     _configure(50_000, 0);
 
     _exposeStopLoss(0, 0, price, false);
-    (uint256 hwm0Before, uint256 hwm1Before) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0Before, uint256 hwm1Before) = extension.currentHighWatermarks(address(mockPool), 0);
 
     _storeBin(0, 600, 600, BIN_SHARES);
     _exposeStopLoss(0, 0, price, false);
 
-    (uint256 hwm0After, uint256 hwm1After) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0After, uint256 hwm1After) = extension.currentHighWatermarks(address(mockPool), 0);
     assertGt(hwm0After, hwm0Before);
     assertGt(hwm1After, hwm1Before);
   }
@@ -637,7 +651,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     _exposeStopLoss(0, 0, price, true);
 
-    (uint256 hwm0, uint256 hwm1) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm0, uint256 hwm1) = extension.currentHighWatermarks(address(mockPool), 0);
     assertEq(hwm0, expectedT0);
     assertEq(hwm1, expectedT1);
   }
@@ -651,9 +665,9 @@ contract OracleValueStopLossSubhookTest is Test {
 
     _exposeStopLoss(0, 2, price, false);
 
-    (uint256 hwm0,) = hook.currentHighWatermarks(address(mockPool), 0);
-    (uint256 hwm1,) = hook.currentHighWatermarks(address(mockPool), 1);
-    (uint256 hwm2,) = hook.currentHighWatermarks(address(mockPool), 2);
+    (uint256 hwm0,) = extension.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwm1,) = extension.currentHighWatermarks(address(mockPool), 1);
+    (uint256 hwm2,) = extension.currentHighWatermarks(address(mockPool), 2);
     assertGt(hwm0, 0);
     assertEq(hwm1, 0);
     assertGt(hwm2, 0);
@@ -665,7 +679,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     uint128 price1 = uint128(Q64);
     _exposeStopLoss(0, 0, price1, false);
-    (uint256 hwmT0_price1,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwmT0_price1,) = extension.currentHighWatermarks(address(mockPool), 0);
 
     vm.startPrank(admin);
     _proposeAndExecuteWatermarks(0, 0, 0);
@@ -673,7 +687,7 @@ contract OracleValueStopLossSubhookTest is Test {
 
     uint128 price2 = uint128(2 * Q64);
     _exposeStopLoss(0, 0, price2, false);
-    (uint256 hwmT0_price2,) = hook.currentHighWatermarks(address(mockPool), 0);
+    (uint256 hwmT0_price2,) = extension.currentHighWatermarks(address(mockPool), 0);
 
     assertGt(hwmT0_price1, hwmT0_price2);
   }

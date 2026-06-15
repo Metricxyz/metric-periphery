@@ -8,18 +8,18 @@ import {ExtensionOrders} from "@metric-core/types/PoolExtensionsConfig.sol";
 import {PoolExtensions} from "@metric-core/types/PoolExtensionsConfig.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {ExtensionOrderTestLib} from "@metric-core-test/ExtensionOrderTestLib.sol";
-import {DepositAllowlistHook} from "../../contracts/hooks/DepositAllowlistHook.sol";
-import {SwapAllowlistHook} from "../../contracts/hooks/SwapAllowlistHook.sol";
+import {DepositAllowlistExtension} from "../../contracts/extensions/DepositAllowlistExtension.sol";
+import {SwapAllowlistExtension} from "../../contracts/extensions/SwapAllowlistExtension.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {TestCaller} from "@metric-core-test/mocks/TestCaller.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
-contract FullMetricHookTest is MetricOmmPoolBaseTest {
+contract FullMetricExtensionTest is MetricOmmPoolBaseTest {
   MockPriceProvider priceProvider;
-  DepositAllowlistHook depositHook;
-  SwapAllowlistHook swapHook;
+  DepositAllowlistExtension depositExtension;
+  SwapAllowlistExtension swapExtension;
 
-  uint72 constant HOOK_TEST_SALT = 777;
+  uint72 constant EXTENSION_TEST_SALT = 777;
 
   function setUp() public override {
     factory = address(this);
@@ -36,10 +36,10 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
     priceProvider.setBidAndAskPrice(SafeCast.toUint128(2 ** 64), SafeCast.toUint128(2 ** 64));
     oracle = priceProvider;
 
-    depositHook = new DepositAllowlistHook(factory);
-    swapHook = new SwapAllowlistHook(factory);
+    depositExtension = new DepositAllowlistExtension(factory);
+    swapExtension = new SwapAllowlistExtension(factory);
 
-    pool = _deployPoolWithHooks();
+    pool = _deployPoolWithExtensions();
 
     _approveUsersForPool(address(pool));
 
@@ -53,8 +53,8 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
   }
 
   function test_blocksSwapWhenSwapperNotAllowed() public {
-    depositHook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
-    _addLiquidity(0, -5, 4, 100_000, HOOK_TEST_SALT);
+    depositExtension.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
+    _addLiquidity(0, -5, 4, 100_000, EXTENSION_TEST_SALT);
 
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToSwap.selector);
     _swap(0, users[0], false, int128(1000), type(uint128).max);
@@ -62,23 +62,23 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
 
   function test_blocksDepositWhenDepositorNotAllowed() public {
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToDeposit.selector);
-    _addLiquidity(0, -5, 4, 10_000, HOOK_TEST_SALT);
+    _addLiquidity(0, -5, 4, 10_000, EXTENSION_TEST_SALT);
   }
 
   function test_allowedSwapSucceeds() public {
-    depositHook.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
-    swapHook.setAllowedToSwap(address(pool), address(callers[0]), true);
+    depositExtension.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
+    swapExtension.setAllowedToSwap(address(pool), address(callers[0]), true);
 
-    _addLiquidity(0, -5, 4, 100_000, HOOK_TEST_SALT);
+    _addLiquidity(0, -5, 4, 100_000, EXTENSION_TEST_SALT);
     _swap(0, users[0], false, int128(1000), type(uint128).max);
   }
 
-  function _deployPoolWithHooks() internal returns (MetricOmmPool deployedPool) {
+  function _deployPoolWithExtensions() internal returns (MetricOmmPool deployedPool) {
     (BinState[] memory nn, BinState[] memory neg) = _defaultBinStateArrays();
 
     PoolExtensions memory extensions;
-    extensions.extension1 = address(depositHook);
-    extensions.extension2 = address(swapHook);
+    extensions.extension1 = address(depositExtension);
+    extensions.extension2 = address(swapExtension);
 
     ExtensionOrders memory extensionOrders;
     extensionOrders.beforeAddLiquidity = ExtensionOrderTestLib.encodeExtensionOrder(1, 0, 0, 0, 0, 0, 0);
