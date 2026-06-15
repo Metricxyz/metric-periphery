@@ -90,9 +90,9 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 deadline,
     bytes memory data,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public payable override returns (int128 amount0Delta, int128 amount1Delta) {
-    return _swap(pool, recipient, zeroForOne, amountSpecified, priceLimitX64, deadline, data, hookData);
+    return _swap(pool, recipient, zeroForOne, amountSpecified, priceLimitX64, deadline, data, extensionData);
   }
 
   // ============ External: token swap ============
@@ -119,9 +119,9 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public payable override returns (uint256 amountOut, uint256 amountInUsed) {
-    return _swapExactInput(pool, recipient, zeroForOne, amountIn, priceLimitX64, minAmountOut, deadline, hookData);
+    return _swapExactInput(pool, recipient, zeroForOne, amountIn, priceLimitX64, minAmountOut, deadline, extensionData);
   }
 
   /// @inheritdoc IMetricOmmPoolSwapper
@@ -146,10 +146,10 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public payable override returns (uint256 amountOut, uint256 amountInUsed) {
     return _swapExactOutput(
-      pool, recipient, zeroForOne, amountOutDesired, priceLimitX64, maxAmountIn, deadline, hookData
+      pool, recipient, zeroForOne, amountOutDesired, priceLimitX64, maxAmountIn, deadline, extensionData
     );
   }
 
@@ -177,10 +177,10 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public payable override returns (uint256 amountOut, uint256 amountInUsed) {
     return _swapExactInputNativeForTokens(
-      pool, recipient, zeroForOne, amountIn, priceLimitX64, minAmountOut, deadline, hookData
+      pool, recipient, zeroForOne, amountIn, priceLimitX64, minAmountOut, deadline, extensionData
     );
   }
 
@@ -208,10 +208,10 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public payable override returns (uint256 amountOut, uint256 amountInUsed) {
     return _swapExactOutputNativeForTokens(
-      pool, recipient, zeroForOne, amountOutDesired, priceLimitX64, maxAmountIn, deadline, hookData
+      pool, recipient, zeroForOne, amountOutDesired, priceLimitX64, maxAmountIn, deadline, extensionData
     );
   }
 
@@ -237,10 +237,10 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public override returns (uint256 amountOut, uint256 amountInUsed) {
     return _swapExactInputTokensForNative(
-      pool, recipient, zeroForOne, amountIn, priceLimitX64, minAmountOut, deadline, hookData
+      pool, recipient, zeroForOne, amountIn, priceLimitX64, minAmountOut, deadline, extensionData
     );
   }
 
@@ -268,10 +268,10 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public override returns (uint256 amountOut, uint256 amountInUsed) {
     return _swapExactOutputTokensForNative(
-      pool, recipient, zeroForOne, amountOutDesired, priceLimitX64, maxAmountIn, deadline, hookData
+      pool, recipient, zeroForOne, amountOutDesired, priceLimitX64, maxAmountIn, deadline, extensionData
     );
   }
 
@@ -334,12 +334,12 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 deadline,
     bytes memory callbackData,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (int128 amount0Delta, int128 amount1Delta) {
     _checkDeadline(deadline);
     if (msg.value != 0) revert NativeValueNotExpected();
     (amount0Delta, amount1Delta) = _swapWithContext(
-      pool, msg.sender, recipient, zeroForOne, amountSpecified, priceLimitX64, false, false, callbackData, hookData
+      pool, msg.sender, recipient, zeroForOne, amountSpecified, priceLimitX64, false, false, callbackData, extensionData
     );
     _clearSwap();
   }
@@ -368,11 +368,11 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (uint256 amountOut, uint256 amountInUsed) {
     if (msg.value != 0) revert NativeValueNotExpected();
     (int128 amount0Delta, int128 amount1Delta) =
-      _swap(pool, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, deadline, "", hookData);
+      _swap(pool, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, deadline, "", extensionData);
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
     if (amountOut < minAmountOut) revert InsufficientOutput(amountOut, minAmountOut);
   }
@@ -402,11 +402,12 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (uint256 amountOut, uint256 amountInUsed) {
     if (msg.value != 0) revert NativeValueNotExpected();
-    (int128 amount0Delta, int128 amount1Delta) =
-      _swap(pool, recipient, zeroForOne, _toSignedExactOutput(amountOutDesired), priceLimitX64, deadline, "", hookData);
+    (int128 amount0Delta, int128 amount1Delta) = _swap(
+      pool, recipient, zeroForOne, _toSignedExactOutput(amountOutDesired), priceLimitX64, deadline, "", extensionData
+    );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
     if (amountOut < amountOutDesired) revert InvalidSwapDeltas();
     if (amountInUsed > maxAmountIn) revert InputTooHigh(amountInUsed, maxAmountIn);
@@ -441,13 +442,22 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
     if (msg.value != uint256(amountIn)) revert InsufficientNativeValue(amountIn, msg.value);
 
     (int128 amount0Delta, int128 amount1Delta) = _swapWithContext(
-      pool, msg.sender, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, true, false, "", hookData
+      pool,
+      msg.sender,
+      recipient,
+      zeroForOne,
+      _toSignedExactInput(amountIn),
+      priceLimitX64,
+      true,
+      false,
+      "",
+      extensionData
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
     if (amountOut < minAmountOut) revert InsufficientOutput(amountOut, minAmountOut);
@@ -485,7 +495,7 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
     if (msg.value != maxAmountIn) revert InsufficientNativeValue(maxAmountIn, msg.value);
@@ -500,7 +510,7 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
       true,
       false,
       "",
-      hookData
+      extensionData
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
     if (amountOut < amountOutDesired) revert InvalidSwapDeltas();
@@ -537,7 +547,7 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
 
@@ -551,7 +561,7 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
       false,
       true,
       "",
-      hookData
+      extensionData
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
     if (amountOut < minAmountOut) revert InsufficientOutput(amountOut, minAmountOut);
@@ -596,7 +606,7 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (uint256 amountOut, uint256 amountInUsed) {
     _checkDeadline(deadline);
 
@@ -610,7 +620,7 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
       false,
       true,
       "",
-      hookData
+      extensionData
     );
     (amountInUsed, amountOut) = _decodeSwapResult(zeroForOne, amount0Delta, amount1Delta);
     if (amountOut < amountOutDesired) revert InvalidSwapDeltas();
@@ -675,13 +685,13 @@ contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
     bool payerIsNative,
     bool expectNativeOutput,
     bytes memory callbackData,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) private returns (int128 amount0Delta, int128 amount1Delta) {
     _validatePriceLimit(zeroForOne, priceLimitX64);
     _startSwap(pool, payer, payerIsNative, expectNativeOutput, zeroForOne);
 
     try IMetricOmmPoolActions(pool)
-      .swap(recipient, zeroForOne, amountSpecified, priceLimitX64, callbackData, hookData) returns (
+      .swap(recipient, zeroForOne, amountSpecified, priceLimitX64, callbackData, extensionData) returns (
       int128 a0, int128 a1
     ) {
       amount0Delta = a0;

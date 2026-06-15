@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-/// @title IOracleValueStopLossHook
+/// @title IOracleValueStopLossExtension
 /// @notice Per-pool oracle value stop-loss admin, read API, and timelocked parameter updates.
-interface IOracleValueStopLossHook {
+interface IOracleValueStopLossExtension {
   struct BinHighWatermarks {
     uint104 token0;
     uint104 token1;

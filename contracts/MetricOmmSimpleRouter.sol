@@ -27,7 +27,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   struct ExactOutputIterateCallbackData {
     address[] tokens;
     address[] pools;
-    bytes[] hookDatas;
+    bytes[] extensionDatas;
     uint256 zeroForOneBitMap;
     uint256 amountInMax;
     address payer;
@@ -73,7 +73,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
         _toSignedExactInput(params.amountIn),
         params.priceLimitX64,
         abi.encode(JustPayCallbackData({tokenToPay: params.tokenIn, payer: msg.sender})),
-        params.hookData
+        params.extensionData
       );
     int128 out = _amountOut(params.zeroForOne, amount0Delta, amount1Delta);
     amountOut = _toUint128(out);
@@ -88,7 +88,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   ///      `recipient`.
   function exactInput(ExactInputParams calldata params) external returns (uint256 amountOut) {
     _checkDeadline(params.deadline);
-    _validatePath(params.tokens, params.pools, params.hookDatas);
+    _validatePath(params.tokens, params.pools, params.extensionDatas);
 
     uint256 last = params.pools.length - 1;
     int128 amount = _toSignedExactInput(params.amountIn);
@@ -105,7 +105,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
           amount,
           _openLimit(zeroForOne),
           abi.encode(JustPayCallbackData({tokenToPay: params.tokens[i], payer: i == 0 ? msg.sender : address(this)})),
-          params.hookDatas[i]
+          params.extensionDatas[i]
         );
 
       amount = _amountOut(zeroForOne, amount0Delta, amount1Delta);
@@ -134,7 +134,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
         -expectedAmountOut,
         params.priceLimitX64,
         abi.encode(JustPayCallbackData({tokenToPay: params.tokenIn, payer: msg.sender})),
-        params.hookData
+        params.extensionData
       );
     int128 amountOut = _amountOut(params.zeroForOne, amount0Delta, amount1Delta);
     if (amountOut != expectedAmountOut) revert InvalidOutputAmount(amountOut, params.amountOut);
@@ -152,7 +152,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   ///      `amountIn`.
   function exactOutput(ExactOutputParams calldata params) external returns (uint256 amountIn) {
     _checkDeadline(params.deadline);
-    _validatePath(params.tokens, params.pools, params.hookDatas);
+    _validatePath(params.tokens, params.pools, params.extensionDatas);
 
     uint8 hop = uint8(params.pools.length - 1);
     address pool = params.pools[hop];
@@ -169,13 +169,13 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
           ExactOutputIterateCallbackData({
           tokens: params.tokens,
           pools: params.pools,
-          hookDatas: params.hookDatas,
+          extensionDatas: params.extensionDatas,
           zeroForOneBitMap: params.zeroForOneBitMap,
           payer: msg.sender,
           amountInMax: params.amountInMaximum
         })
         ),
-        params.hookDatas[hop]
+        params.extensionDatas[hop]
       );
 
     int128 amountOut = _amountOut(zeroForOne, amount0Delta, amount1Delta);
@@ -212,19 +212,19 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
     _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop);
 
     (int128 amount0DeltaReturned, int128 amount1DeltaReturned) = IMetricOmmPoolActions(pool)
-      .swap(msg.sender, zeroForOne, _negInt128(amountToPay), _openLimit(zeroForOne), data, cb.hookDatas[hop]);
+      .swap(msg.sender, zeroForOne, _negInt128(amountToPay), _openLimit(zeroForOne), data, cb.extensionDatas[hop]);
 
     int128 amountOut = _amountOut(zeroForOne, amount0DeltaReturned, amount1DeltaReturned);
 
     if (amountOut != amountToPay) revert InvalidOutputAmountAtHop(hop, amountOut, amountToPay);
   }
 
-  function _validatePath(address[] calldata tokens, address[] calldata pools, bytes[] calldata hookDatas)
+  function _validatePath(address[] calldata tokens, address[] calldata pools, bytes[] calldata extensionDatas)
     internal
     pure
   {
     if (
-      tokens.length < 2 || pools.length != tokens.length - 1 || hookDatas.length != pools.length
+      tokens.length < 2 || pools.length != tokens.length - 1 || extensionDatas.length != pools.length
         || pools.length > MAX_PATH_POOLS
     ) {
       revert InvalidPath();

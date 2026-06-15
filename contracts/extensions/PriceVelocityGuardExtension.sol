@@ -2,12 +2,12 @@
 pragma solidity ^0.8.35;
 
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
-import {IPriceVelocityGuardHook} from "../interfaces/hooks/IPriceVelocityGuardHook.sol";
-import {BaseMetricHook} from "./base/BaseMetricHook.sol";
+import {IPriceVelocityGuardExtension} from "../interfaces/extensions/IPriceVelocityGuardExtension.sol";
+import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 
-/// @title PriceVelocityGuardHook
+/// @title PriceVelocityGuardExtension
 /// @notice Caps how fast the provided price can move between blocks, per pool.
-/// @dev This hook allows the pool admin to increase security of the pool by limiting price
+/// @dev This extension allows the pool admin to increase security of the pool by limiting price
 ///      manipulation through velocity constraints. However, it assumes that the pool admin is not
 ///      an adversary and acts to optimize pool profitability. The pool admin must be trusted.
 ///
@@ -15,10 +15,10 @@ import {BaseMetricHook} from "./base/BaseMetricHook.sol";
 ///      Comparison is performed on squares to avoid an on-chain sqrt:
 ///        changeE18^2 <= maxChangePerBlockE18^2 * (1 + blockDiff)
 ///      where 1e18 = 100% (full unit).
-contract PriceVelocityGuardHook is BaseMetricHook, IPriceVelocityGuardHook {
+contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuardExtension {
   mapping(address pool => PriceVelocityState) public priceVelocityState;
 
-  constructor(address factory_) BaseMetricHook(factory_) {}
+  constructor(address factory_) BaseMetricExtension(factory_) {}
 
   function setMaxChangePerBlock(address pool_, uint64 newMaxPctChangePerBlockE18) external onlyPoolAdmin(pool_) {
     priceVelocityState[pool_].maxChangePerBlockE18 = newMaxPctChangePerBlockE18;

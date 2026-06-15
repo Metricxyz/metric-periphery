@@ -3,15 +3,15 @@ pragma solidity ^0.8.35;
 
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {ISwapAllowlistHook} from "../interfaces/hooks/ISwapAllowlistHook.sol";
-import {BaseMetricHook} from "./base/BaseMetricHook.sol";
+import {ISwapAllowlistExtension} from "../interfaces/extensions/ISwapAllowlistExtension.sol";
+import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 
-/// @title SwapAllowlistHook
+/// @title SwapAllowlistExtension
 /// @notice Gates `swap` by swapper address, per pool.
-contract SwapAllowlistHook is BaseMetricHook, ISwapAllowlistHook {
+contract SwapAllowlistExtension is BaseMetricExtension, ISwapAllowlistExtension {
   mapping(address pool => mapping(address swapper => bool)) public allowedSwapper;
 
-  constructor(address factory_) BaseMetricHook(factory_) {}
+  constructor(address factory_) BaseMetricExtension(factory_) {}
 
   function setAllowedToSwap(address pool_, address swapper, bool allowed) external onlyPoolAdmin(pool_) {
     allowedSwapper[pool_][swapper] = allowed;

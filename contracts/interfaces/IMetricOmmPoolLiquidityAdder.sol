@@ -76,7 +76,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param deltas Shares per bin.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
-  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
+  /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityExactShares(
@@ -86,7 +86,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity for caller-owned position with explicit shares and max token caps.
@@ -95,7 +95,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param deltas Shares per bin.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
-  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
+  /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityExactShares(
@@ -104,7 +104,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps.
@@ -121,7 +121,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param maximalCurBin Maximum allowed curBinIdx from slot0; use type(int8).max to disable upper bin bound.
   /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin; use type(uint104).max when
   ///        unconstrained at maximalCurBin.
-  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
+  /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityWeighted(
@@ -135,7 +135,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint104 minimalPosition,
     int8 maximalCurBin,
     uint104 maximalPosition,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps for caller-owned position.
@@ -151,7 +151,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
   /// @param maximalCurBin Maximum allowed curBinIdx from slot0; use type(int8).max to disable upper bin bound.
   /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin; use type(uint104).max when
   ///        unconstrained at maximalCurBin.
-  /// @param hookData Opaque bytes forwarded to liquidity hooks (beforeAddLiquidity / afterAddLiquidity).
+  /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
   function addLiquidityWeighted(
@@ -164,6 +164,6 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint104 minimalPosition,
     int8 maximalCurBin,
     uint104 maximalPosition,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external returns (uint256 amount0Added, uint256 amount1Added);
 }

@@ -3,15 +3,19 @@ pragma solidity ^0.8.35;
 
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
+import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
-import {SubhookUtils} from "./SubhookUtils.sol";
 
-/// @title BaseMetricHook
-/// @notice Base for pool hooks: enforces pool-only entry and default-unimplemented callbacks.
-///         A single hook instance may serve any number of pools deployed from `FACTORY`.
-abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
+/// @title BaseMetricExtension
+/// @notice Base for pool extensions: enforces pool-only entry and default-unimplemented callbacks.
+///         A single extension instance may serve any number of pools deployed from `FACTORY`.
+abstract contract BaseMetricExtension is IMetricOmmExtensions {
+  address public immutable FACTORY;
+
   error OnlyPool(address caller, address factory);
-  error HookNotImplemented();
+  error OnlyPoolAdmin(address pool, address caller, address admin);
+  error OnlyFactory(address caller, address factory);
+  error ExtensionNotImplemented();
 
   modifier onlyPool() {
     if (IMetricOmmPool(msg.sender).getImmutables().factory != FACTORY) {
@@ -20,7 +24,20 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     _;
   }
 
-  constructor(address factory_) SubhookUtils(factory_) {}
+  modifier onlyFactory() {
+    if (msg.sender != FACTORY) revert OnlyFactory(msg.sender, FACTORY);
+    _;
+  }
+
+  modifier onlyPoolAdmin(address pool_) {
+    address poolAdmin = IMetricOmmPoolFactory(FACTORY).poolAdmin(pool_);
+    if (msg.sender != poolAdmin) revert OnlyPoolAdmin(pool_, msg.sender, poolAdmin);
+    _;
+  }
+
+  constructor(address factory_) {
+    FACTORY = factory_;
+  }
 
   function initialize(address, bytes calldata) external virtual onlyFactory returns (bytes4) {
     return IMetricOmmExtensions.initialize.selector;
@@ -32,7 +49,7 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     onlyPool
     returns (bytes4)
   {
-    revert HookNotImplemented();
+    revert ExtensionNotImplemented();
   }
 
   function afterAddLiquidity(address, address, uint80, LiquidityDelta calldata, uint256, uint256, bytes calldata)
@@ -41,7 +58,7 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     onlyPool
     returns (bytes4)
   {
-    revert HookNotImplemented();
+    revert ExtensionNotImplemented();
   }
 
   function beforeRemoveLiquidity(address, address, uint80, LiquidityDelta calldata, bytes calldata)
@@ -50,7 +67,7 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     onlyPool
     returns (bytes4)
   {
-    revert HookNotImplemented();
+    revert ExtensionNotImplemented();
   }
 
   function afterRemoveLiquidity(address, address, uint80, LiquidityDelta calldata, uint256, uint256, bytes calldata)
@@ -59,7 +76,7 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     onlyPool
     returns (bytes4)
   {
-    revert HookNotImplemented();
+    revert ExtensionNotImplemented();
   }
 
   function beforeSwap(address, address, bool, int128, uint128, uint256, uint128, uint128, bytes calldata)
@@ -68,7 +85,7 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     onlyPool
     returns (bytes4)
   {
-    revert HookNotImplemented();
+    revert ExtensionNotImplemented();
   }
 
   function afterSwap(
@@ -86,6 +103,6 @@ abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
     uint256,
     bytes calldata
   ) external virtual onlyPool returns (bytes4) {
-    revert HookNotImplemented();
+    revert ExtensionNotImplemented();
   }
 }

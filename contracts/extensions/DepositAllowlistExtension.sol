@@ -4,15 +4,15 @@ pragma solidity ^0.8.35;
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
-import {IDepositAllowlistHook} from "../interfaces/hooks/IDepositAllowlistHook.sol";
-import {BaseMetricHook} from "./base/BaseMetricHook.sol";
+import {IDepositAllowlistExtension} from "../interfaces/extensions/IDepositAllowlistExtension.sol";
+import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 
-/// @title DepositAllowlistHook
+/// @title DepositAllowlistExtension
 /// @notice Gates `addLiquidity` by depositor address, per pool.
-contract DepositAllowlistHook is BaseMetricHook, IDepositAllowlistHook {
+contract DepositAllowlistExtension is BaseMetricExtension, IDepositAllowlistExtension {
   mapping(address pool => mapping(address depositor => bool)) public allowedDepositor;
 
-  constructor(address factory_) BaseMetricHook(factory_) {}
+  constructor(address factory_) BaseMetricExtension(factory_) {}
 
   function setAllowedToDeposit(address pool_, address depositor, bool allowed) external onlyPoolAdmin(pool_) {
     allowedDepositor[pool_][depositor] = allowed;

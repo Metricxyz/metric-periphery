@@ -12,7 +12,7 @@ contract MetricOmmPoolQuoter {
   error WrappedError(address target, bytes4 selector, bytes reason, bytes additionalInfo);
 
   /// @notice Simulate swap and return pool deltas without state changes.
-  /// @dev Uses `msg.sender` as `recipient` and empty `hookData`; use the overload when hooks gate on those fields.
+  /// @dev Uses `msg.sender` as `recipient` and empty `extensionData`; use the overload when extensions gate on those fields.
   function quoteSwap(
     address pool,
     bool zeroForOne,
@@ -24,7 +24,7 @@ contract MetricOmmPoolQuoter {
     return _quoteSwap(pool, msg.sender, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, hex"");
   }
 
-  /// @notice Simulate swap with explicit hook context (matches live `swap` hook inputs).
+  /// @notice Simulate swap with explicit extension context (matches live `swap` extension inputs).
   function quoteSwap(
     address pool,
     address recipient,
@@ -33,9 +33,11 @@ contract MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) public virtual returns (int128 amount0Delta, int128 amount1Delta) {
-    return _quoteSwap(pool, recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, hookData);
+    return _quoteSwap(
+      pool, recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, extensionData
+    );
   }
 
   function _quoteSwap(
@@ -46,11 +48,11 @@ contract MetricOmmPoolQuoter {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
-    bytes memory hookData
+    bytes memory extensionData
   ) internal returns (int128 amount0Delta, int128 amount1Delta) {
     try IMetricOmmPool(pool)
       .simulateSwapAndRevert(
-        recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, hookData
+        recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, extensionData
       ) {
       revert("SimulateSwapAndRevert did not revert");
     } catch (bytes memory reason) {

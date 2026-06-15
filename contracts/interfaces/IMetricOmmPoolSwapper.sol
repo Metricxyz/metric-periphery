@@ -75,7 +75,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
 
   /// @notice Execute a direct pool swap with custom callback data.
   /// @dev Advanced path: no amount-based slippage protection; see swap() NatSpec. Pass empty `data` and non-empty
-  ///      `hookData` to forward only hook data.
+  ///      `extensionData` to forward only extension data.
   function swap(
     address pool,
     address recipient,
@@ -86,7 +86,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     bytes memory data
   ) external payable returns (int128 amount0Delta, int128 amount1Delta);
 
-  /// @notice Execute a direct pool swap with custom callback data and hook data.
+  /// @notice Execute a direct pool swap with custom callback data and extension data.
   /// @dev Advanced path: no amount-based slippage protection; see swap() NatSpec.
   function swap(
     address pool,
@@ -96,7 +96,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 deadline,
     bytes memory data,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external payable returns (int128 amount0Delta, int128 amount1Delta);
 
   // ============ Mutating: Token Swap ============
@@ -112,7 +112,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
-  /// @notice Swap exact token input for token output, forwarding hook data to pool hooks.
+  /// @notice Swap exact token input for token output, forwarding extension data to pool extensions.
   function swapExactInput(
     address pool,
     address recipient,
@@ -121,7 +121,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
   /// @notice Swap token input for exact token output target.
@@ -135,7 +135,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
-  /// @notice Swap token input for exact token output target, forwarding hook data to pool hooks.
+  /// @notice Swap token input for exact token output target, forwarding extension data to pool extensions.
   function swapExactOutput(
     address pool,
     address recipient,
@@ -144,7 +144,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
   // ============ Mutating: Native <-> Token Swap ============
@@ -160,7 +160,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
-  /// @notice Swap exact native ETH input for token output, forwarding hook data to pool hooks.
+  /// @notice Swap exact native ETH input for token output, forwarding extension data to pool extensions.
   function swapExactInputNativeForTokens(
     address pool,
     address recipient,
@@ -169,7 +169,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
   /// @notice Swap native ETH (bounded by `maxAmountIn`) for exact token output.
@@ -183,7 +183,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
-  /// @notice Swap native ETH for exact token output, forwarding hook data to pool hooks.
+  /// @notice Swap native ETH for exact token output, forwarding extension data to pool extensions.
   function swapExactOutputNativeForTokens(
     address pool,
     address recipient,
@@ -192,7 +192,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external payable returns (uint256 amountOut, uint256 amountInUsed);
 
   /// @notice Swap exact token input for native ETH output.
@@ -206,7 +206,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external returns (uint256 amountOut, uint256 amountInUsed);
 
-  /// @notice Swap exact token input for native ETH output, forwarding hook data to pool hooks.
+  /// @notice Swap exact token input for native ETH output, forwarding extension data to pool extensions.
   function swapExactInputTokensForNative(
     address pool,
     address recipient,
@@ -215,7 +215,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 minAmountOut,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external returns (uint256 amountOut, uint256 amountInUsed);
 
   /// @notice Swap token input (bounded by `maxAmountIn`) for exact native ETH output.
@@ -229,7 +229,7 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint256 deadline
   ) external returns (uint256 amountOut, uint256 amountInUsed);
 
-  /// @notice Swap token input for exact native ETH output, forwarding hook data to pool hooks.
+  /// @notice Swap token input for exact native ETH output, forwarding extension data to pool extensions.
   function swapExactOutputTokensForNative(
     address pool,
     address recipient,
@@ -238,6 +238,6 @@ interface IMetricOmmPoolSwapper is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint256 maxAmountIn,
     uint256 deadline,
-    bytes calldata hookData
+    bytes calldata extensionData
   ) external returns (uint256 amountOut, uint256 amountInUsed);
 }
