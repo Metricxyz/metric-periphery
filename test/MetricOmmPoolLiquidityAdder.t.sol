@@ -15,6 +15,7 @@ import {MetricOmmPoolStateView} from "../contracts/lens/MetricOmmPoolStateView.s
 import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {MetricOmmPoolLiquidityAdder} from "../contracts/MetricOmmPoolLiquidityAdder.sol";
 import {IMetricOmmPoolLiquidityAdder} from "../contracts/interfaces/IMetricOmmPoolLiquidityAdder.sol";
+import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 
 uint256 constant Q64 = 2 ** 64;
@@ -169,6 +170,10 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     d.shares[1] = w1;
   }
 
+  function _unconstrainedCursorBounds() internal pure returns (int8, uint104, int8, uint104) {
+    return (type(int8).min, 0, type(int8).max, type(uint104).max);
+  }
+
   function test_exactShares_succeedsUnderMax() public {
     LiquidityDelta memory d = _deltaAbovePrice(4, 80_000);
     uint256 wethBefore = weth.balanceOf(alice);
@@ -257,8 +262,10 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
   function test_weighted_scalesDownToRespectCaps() public {
     LiquidityDelta memory w = _deltaAbovePrice(4, 5_000_000);
 
+    (int8 minBin, uint104 minPos, int8 maxBin, uint104 maxPos) = _unconstrainedCursorBounds();
     vm.prank(alice);
-    (uint256 a0, uint256 a1) = helper.addLiquidityWeighted(address(pool), alice, 2, w, 50_000, 50_000, "");
+    (uint256 a0, uint256 a1) =
+      helper.addLiquidityWeighted(address(pool), alice, 2, w, 50_000, 50_000, minBin, minPos, maxBin, maxPos, "");
 
     assertLe(a0, 50_000);
     assertLe(a1, 50_000);
@@ -268,8 +275,9 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
   function test_weighted_twoBins_keepsRatioAfterScale() public {
     LiquidityDelta memory w = _deltaTwoBins(3, 400_000, 4, 100_000);
 
+    (int8 minBin, uint104 minPos, int8 maxBin, uint104 maxPos) = _unconstrainedCursorBounds();
     vm.prank(alice);
-    helper.addLiquidityWeighted(address(pool), alice, 3, w, 30_000, 30_000, "");
+    helper.addLiquidityWeighted(address(pool), alice, 3, w, 30_000, 30_000, minBin, minPos, maxBin, maxPos, "");
 
     uint256 s3 = stateView.positionBinShares(address(pool), alice, 3, int8(3));
     uint256 s4 = stateView.positionBinShares(address(pool), alice, 3, int8(4));
@@ -280,9 +288,12 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
   function test_weighted_zeroWeightReverts() public {
     LiquidityDelta memory w = _deltaAbovePrice(2, 0);
+    (int8 minBin, uint104 minPos, int8 maxBin, uint104 maxPos) = _unconstrainedCursorBounds();
     vm.prank(alice);
     vm.expectRevert(IMetricOmmPoolLiquidityAdder.ZeroWeight.selector);
-    helper.addLiquidityWeighted(address(pool), alice, 4, w, type(uint256).max, type(uint256).max, "");
+    helper.addLiquidityWeighted(
+      address(pool), alice, 4, w, type(uint256).max, type(uint256).max, minBin, minPos, maxBin, maxPos, ""
+    );
   }
 
   function test_weighted_canAddOnBehalfOfAnotherOwner() public {
@@ -290,11 +301,74 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     address bob = makeAddr("bob");
     uint256 cap = 50_000;
 
+    (int8 minBin, uint104 minPos, int8 maxBin, uint104 maxPos) = _unconstrainedCursorBounds();
     vm.prank(alice);
-    helper.addLiquidityWeighted(address(pool), bob, 5, w, cap, cap, "");
+    helper.addLiquidityWeighted(address(pool), bob, 5, w, cap, cap, minBin, minPos, maxBin, maxPos, "");
 
     uint256 bobShares = stateView.positionBinShares(address(pool), bob, 5, int8(4));
     assertGt(bobShares, 0);
+  }
+
+  function test_weighted_revertsCursorOutOfBounds() public {
+    LiquidityDelta memory w = _deltaAbovePrice(4, 100_000);
+    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(address(pool));
+
+    vm.prank(alice);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IMetricOmmPoolLiquidityAdder.CursorOutOfBounds.selector,
+        curBinIdx,
+        curPosInBin,
+        type(int8).min,
+        uint104(0),
+        int8(-1),
+        type(uint104).max
+      )
+    );
+    helper.addLiquidityWeighted(
+      address(pool),
+      alice,
+      7,
+      w,
+      type(uint256).max,
+      type(uint256).max,
+      type(int8).min,
+      0,
+      int8(-1),
+      type(uint104).max,
+      ""
+    );
+  }
+
+  function test_weighted_revertsWhenMinimalPositionTooHigh() public {
+    LiquidityDelta memory w = _deltaAbovePrice(4, 100_000);
+    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(address(pool));
+
+    vm.prank(alice);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IMetricOmmPoolLiquidityAdder.CursorOutOfBounds.selector,
+        curBinIdx,
+        curPosInBin,
+        curBinIdx,
+        curPosInBin + 1,
+        type(int8).max,
+        type(uint104).max
+      )
+    );
+    helper.addLiquidityWeighted(
+      address(pool),
+      alice,
+      8,
+      w,
+      type(uint256).max,
+      type(uint256).max,
+      curBinIdx,
+      curPosInBin + 1,
+      type(int8).max,
+      type(uint104).max,
+      ""
+    );
   }
 
   function _binPackedArrays() internal pure returns (uint256[] memory nn, uint256[] memory neg) {

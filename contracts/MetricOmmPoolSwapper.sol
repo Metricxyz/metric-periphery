@@ -17,6 +17,9 @@ import {IMetricOmmPoolSwapper} from "./interfaces/IMetricOmmPoolSwapper.sol";
 ///      - `zeroForOne == true`: `priceLimitX64 == 0` means unconstrained lower bound.
 ///      - `zeroForOne == false`: `priceLimitX64 == type(uint128).max` means unconstrained upper bound.
 ///      Opposite sentinels are rejected with `InvalidPriceLimitForDirection`.
+/// @dev The caller is responsible for supplying a legitimate pool address. This contract does not verify the pool
+///      against the factory; interacting with a malicious pool can cause loss of approved tokens or incidental
+///      ETH/WETH held by the router.
 contract MetricOmmPoolSwapper is IMetricOmmPoolSwapper, MetricOmmPoolQuoter {
   using SafeERC20 for IERC20;
 
