@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 
 import {Test} from "forge-std/Test.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
-import {PoolHooks, HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
+import {PoolExtensions, ExtensionOrders} from "@metric-core/types/PoolExtensionsConfig.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
@@ -35,7 +35,7 @@ contract MockPriceProviderLPH is IPriceProvider {
     quoteToken = _quoteToken;
   }
 
-  function getBidAndAskPrice() external view returns (uint128, uint128) {
+  function getBidAndAskPrice() external returns (uint128, uint128) {
     return (bidPrice, askPrice);
   }
 
@@ -103,28 +103,28 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) =
       _getScaleMultipliers(address(weth), address(token1));
 
-    PoolHooks memory hooks;
-    HookOrders memory hookOrders;
+    PoolExtensions memory extensions;
+    ExtensionOrders memory extensionOrders;
 
     pool = new MetricOmmPool(
       address(factoryStub),
+      address(this),
+      makeAddr("adminFeeDest"),
       address(weth),
       address(token1),
       address(oracle),
-      hooks,
-      hookOrders,
+      extensions,
+      extensionOrders,
       true,
       token0ScaleMultiplier,
       token1ScaleMultiplier,
       INITIAL_TOKEN_0_DENSITY,
       INITIAL_TOKEN_1_DENSITY,
       MINIMAL_MINTABLE_LIQUIDITY,
-      PROTOCOL_FEE,
-      ADMIN_FEE,
+      PROTOCOL_FEE + ADMIN_FEE,
       0,
       nnStates,
       negStates,
-      0,
       0
     );
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IPriceVelocityGuardHook} from "../interfaces/hooks/IPriceVelocityGuardHook.sol";
 import {BaseMetricHook} from "./base/BaseMetricHook.sol";
 
@@ -71,6 +71,6 @@ contract PriceVelocityGuardHook is BaseMetricHook, IPriceVelocityGuardHook {
       }
     }
 
-    return IMetricOmmHooks.beforeSwap.selector;
+    return IMetricOmmExtensions.beforeSwap.selector;
   }
 }

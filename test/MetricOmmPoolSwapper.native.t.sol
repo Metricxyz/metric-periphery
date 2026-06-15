@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
-import {PoolHooks, HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
+import {PoolExtensions, ExtensionOrders} from "@metric-core/types/PoolExtensionsConfig.sol";
 import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
@@ -41,7 +41,7 @@ contract MockPriceProviderForRouter is IPriceProvider {
     quoteToken = _quoteToken;
   }
 
-  function getBidAndAskPrice() external view returns (uint128, uint128) {
+  function getBidAndAskPrice() external returns (uint128, uint128) {
     return (bidPrice, askPrice);
   }
 
@@ -103,13 +103,13 @@ contract MaliciousPoolForRouterTest {
       immutablePriceProvider: address(0),
       lowestBin: 0,
       highestBin: 0,
-      hook1: address(0),
-      hook2: address(0),
-      hook3: address(0),
-      hook4: address(0),
-      hook5: address(0),
-      hook6: address(0),
-      hook7: address(0),
+      extension1: address(0),
+      extension2: address(0),
+      extension3: address(0),
+      extension4: address(0),
+      extension5: address(0),
+      extension6: address(0),
+      extension7: address(0),
       beforeAddLiquidityOrder: 0,
       afterAddLiquidityOrder: 0,
       beforeRemoveLiquidityOrder: 0,
@@ -158,13 +158,13 @@ contract ReentrantPoolForRouterTest {
       immutablePriceProvider: address(0),
       lowestBin: 0,
       highestBin: 0,
-      hook1: address(0),
-      hook2: address(0),
-      hook3: address(0),
-      hook4: address(0),
-      hook5: address(0),
-      hook6: address(0),
-      hook7: address(0),
+      extension1: address(0),
+      extension2: address(0),
+      extension3: address(0),
+      extension4: address(0),
+      extension5: address(0),
+      extension6: address(0),
+      extension7: address(0),
       beforeAddLiquidityOrder: 0,
       afterAddLiquidityOrder: 0,
       beforeRemoveLiquidityOrder: 0,
@@ -279,28 +279,28 @@ contract MetricOmmPoolSwapperNativeTest is Test, PoolInitPreprocessor {
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) =
       _getScaleMultipliers(address(weth), address(token1));
 
-    PoolHooks memory hooks;
-    HookOrders memory hookOrders;
+    PoolExtensions memory extensions;
+    ExtensionOrders memory extensionOrders;
 
     pool = new MetricOmmPool(
       address(factoryStub),
+      address(this),
+      makeAddr("adminFeeDest"),
       address(weth),
       address(token1),
       address(oracle),
-      hooks,
-      hookOrders,
+      extensions,
+      extensionOrders,
       true,
       token0ScaleMultiplier,
       token1ScaleMultiplier,
       INITIAL_TOKEN_0_DENSITY,
       INITIAL_TOKEN_1_DENSITY,
       MINIMAL_MINTABLE_LIQUIDITY,
-      PROTOCOL_FEE,
-      ADMIN_FEE,
+      PROTOCOL_FEE + ADMIN_FEE,
       0,
       nnStates,
       negStates,
-      0,
       0
     );
 

@@ -101,7 +101,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
   // ---- Best bid / ask (marginal + fee stack) ----
 
   /// @notice Returns fee-adjusted best executable bid/ask prices in Q64.64.
-  function getBestBidAndAsk(address pool) external view returns (uint128 bestBidX64, uint128 bestAskX64) {
+  function getBestBidAndAsk(address pool) external returns (uint128 bestBidX64, uint128 bestAskX64) {
     address provider = _resolvePriceProvider(pool);
     (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
     if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
@@ -159,7 +159,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
   }
 
   /// @notice Returns current in-bin marginal price in X64 format.
-  function currentPriceX64(address pool) external view returns (uint256 currentPriceX64Value) {
+  function currentPriceX64(address pool) external returns (uint256 currentPriceX64Value) {
     address provider = _resolvePriceProvider(pool);
     (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
     if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
@@ -182,7 +182,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
   // ---- Per-bin depth ladders ----
 
   /// @notice Computes read-only bid and ask depth ladders from the pool's current bin outward.
-  function getLiquidityDepth(address pool, uint8 maxBinsPerSide) external view returns (LiquidityDepth memory depth) {
+  function getLiquidityDepth(address pool, uint8 maxBinsPerSide) external returns (LiquidityDepth memory depth) {
     if (maxBinsPerSide == 0 || maxBinsPerSide > MAX_BINS_PER_SIDE_CAP) revert MaxBinsPerSideTooLarge();
 
     DepthEnv memory env = _loadDepthEnv(pool);
@@ -249,7 +249,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
     if (provider == address(0)) revert InvalidPriceProvider();
   }
 
-  function _loadDepthEnv(address pool) internal view returns (DepthEnv memory env) {
+  function _loadDepthEnv(address pool) internal returns (DepthEnv memory env) {
     env.imm = IMetricOmmPool(pool).getImmutables();
     env.token0ScaleMultiplier = env.imm.token0ScaleMultiplier;
     env.token1ScaleMultiplier = env.imm.token1ScaleMultiplier;

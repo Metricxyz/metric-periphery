@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {SubhookUtils} from "./SubhookUtils.sol";
@@ -9,7 +9,7 @@ import {SubhookUtils} from "./SubhookUtils.sol";
 /// @title BaseMetricHook
 /// @notice Base for pool hooks: enforces pool-only entry and default-unimplemented callbacks.
 ///         A single hook instance may serve any number of pools deployed from `FACTORY`.
-abstract contract BaseMetricHook is IMetricOmmHooks, SubhookUtils {
+abstract contract BaseMetricHook is IMetricOmmExtensions, SubhookUtils {
   error OnlyPool(address caller, address factory);
   error HookNotImplemented();
 
@@ -23,7 +23,7 @@ abstract contract BaseMetricHook is IMetricOmmHooks, SubhookUtils {
   constructor(address factory_) SubhookUtils(factory_) {}
 
   function initialize(address, bytes calldata) external virtual onlyFactory returns (bytes4) {
-    return IMetricOmmHooks.initialize.selector;
+    return IMetricOmmExtensions.initialize.selector;
   }
 
   function beforeAddLiquidity(address, address, uint80, LiquidityDelta calldata, bytes calldata)

@@ -4,10 +4,10 @@ pragma solidity ^0.8.35;
 import {MetricOmmPoolBaseTest, MockPriceProvider} from "@metric-core-test/MetricOmmPool.base.t.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {BinState} from "@metric-core/types/PoolStorage.sol";
-import {HookOrders} from "@metric-core/types/PoolHooksConfig.sol";
-import {PoolHooks} from "@metric-core/types/PoolHooksConfig.sol";
+import {ExtensionOrders} from "@metric-core/types/PoolExtensionsConfig.sol";
+import {PoolExtensions} from "@metric-core/types/PoolExtensionsConfig.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {HookOrderTestLib} from "@metric-core-test/HookOrderTestLib.sol";
+import {ExtensionOrderTestLib} from "@metric-core-test/ExtensionOrderTestLib.sol";
 import {DepositAllowlistHook} from "../../contracts/hooks/DepositAllowlistHook.sol";
 import {SwapAllowlistHook} from "../../contracts/hooks/SwapAllowlistHook.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
@@ -76,19 +76,19 @@ contract FullMetricHookTest is MetricOmmPoolBaseTest {
   function _deployPoolWithHooks() internal returns (MetricOmmPool deployedPool) {
     (BinState[] memory nn, BinState[] memory neg) = _defaultBinStateArrays();
 
-    PoolHooks memory hooks;
-    hooks.hook1 = address(depositHook);
-    hooks.hook2 = address(swapHook);
+    PoolExtensions memory extensions;
+    extensions.extension1 = address(depositHook);
+    extensions.extension2 = address(swapHook);
 
-    HookOrders memory hookOrders;
-    hookOrders.beforeAddLiquidity = HookOrderTestLib.encodeHookOrder(1, 0, 0, 0, 0, 0, 0);
-    hookOrders.beforeSwap = HookOrderTestLib.encodeHookOrder(2, 0, 0, 0, 0, 0, 0);
+    ExtensionOrders memory extensionOrders;
+    extensionOrders.beforeAddLiquidity = ExtensionOrderTestLib.encodeExtensionOrder(1, 0, 0, 0, 0, 0, 0);
+    extensionOrders.beforeSwap = ExtensionOrderTestLib.encodeExtensionOrder(2, 0, 0, 0, 0, 0, 0);
 
     return _deployPoolAndRegister(
       PoolDeployParams({
         priceProvider: address(priceProvider),
-        hooks: hooks,
-        hookOrders: hookOrders,
+        extensions: extensions,
+        extensionOrders: extensionOrders,
         immutablePriceProvider: true,
         protocolSpreadFeeE6: PROTOCOL_FEE,
         adminSpreadFeeE6: ADMIN_FEE,

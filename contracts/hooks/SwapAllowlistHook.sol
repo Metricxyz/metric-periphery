@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {IMetricOmmHooks} from "@metric-core/interfaces/hooks/IMetricOmmHooks.sol";
+import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {ISwapAllowlistHook} from "../interfaces/hooks/ISwapAllowlistHook.sol";
 import {BaseMetricHook} from "./base/BaseMetricHook.sol";
@@ -31,6 +31,6 @@ contract SwapAllowlistHook is BaseMetricHook, ISwapAllowlistHook {
     if (!allowedSwapper[msg.sender][sender]) {
       revert IMetricOmmPoolActions.NotAllowedToSwap();
     }
-    return IMetricOmmHooks.beforeSwap.selector;
+    return IMetricOmmExtensions.beforeSwap.selector;
   }
 }
