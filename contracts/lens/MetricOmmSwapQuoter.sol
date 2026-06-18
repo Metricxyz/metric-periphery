@@ -60,33 +60,72 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: hypothetical quotes ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalSwap(
+  function quoteHypotheticalExactInput(
     address pool,
     bool zeroForOne,
-    int128 amountSpecified,
+    uint128 amountIn,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64
-  ) public virtual returns (uint256 amountIn, uint256 amountOut) {
+  ) external returns (uint256, uint256) {
+    return quoteHypotheticalExactInput(
+      pool, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, hex""
+    );
+  }
+
+  /// @inheritdoc IMetricOmmSwapQuoter
+  function quoteHypotheticalExactInput(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
+    bytes memory extensionData
+  ) public virtual returns (uint256, uint256) {
+    _validatePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
-      pool, msg.sender, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, hex""
+      pool, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, bidPriceX64, askPriceX64, extensionData
     );
     return _toUnsignedAmounts(zeroForOne, amount0Delta, amount1Delta);
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalSwap(
+  function quoteHypotheticalExactOutput(
+    address pool,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint128 bidPriceX64,
+    uint128 askPriceX64
+  ) external returns (uint256, uint256) {
+    return quoteHypotheticalExactOutput(
+      pool, msg.sender, zeroForOne, amountOutDesired, priceLimitX64, bidPriceX64, askPriceX64, hex""
+    );
+  }
+
+  /// @inheritdoc IMetricOmmSwapQuoter
+  function quoteHypotheticalExactOutput(
     address pool,
     address recipient,
     bool zeroForOne,
-    int128 amountSpecified,
+    uint128 amountOutDesired,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
-    bytes calldata extensionData
-  ) public virtual returns (uint256 amountIn, uint256 amountOut) {
+    bytes memory extensionData
+  ) public virtual returns (uint256, uint256) {
+    _validatePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
-      pool, recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, extensionData
+      pool,
+      recipient,
+      zeroForOne,
+      _toSignedExactOutput(amountOutDesired),
+      priceLimitX64,
+      bidPriceX64,
+      askPriceX64,
+      extensionData
     );
     return _toUnsignedAmounts(zeroForOne, amount0Delta, amount1Delta);
   }
