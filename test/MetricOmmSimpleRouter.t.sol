@@ -873,8 +873,8 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 amountIn = uint128(bound(uint256(rawAmount), 1, 100_000));
     uint128 priceLimit = _priceLimit(zeroForOne);
 
-    try quoter.quoteHypotheticalSwap(
-      address(pool), zeroForOne, int128(int256(uint256(amountIn))), priceLimit, uint128(Q64), uint128(Q64)
+    try quoter.quoteHypotheticalExactInput(
+      address(pool), zeroForOne, amountIn, priceLimit, uint128(Q64), uint128(Q64)
     ) returns (
       uint256 quotedIn, uint256 quotedOut
     ) {
@@ -911,8 +911,8 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 amountOut = uint128(bound(uint256(rawAmount), 1, 50_000));
     uint128 priceLimit = _priceLimit(zeroForOne);
 
-    try quoter.quoteHypotheticalSwap(
-      address(pool), zeroForOne, -int128(int256(uint256(amountOut))), priceLimit, uint128(Q64), uint128(Q64)
+    try quoter.quoteHypotheticalExactOutput(
+      address(pool), zeroForOne, amountOut, priceLimit, uint128(Q64), uint128(Q64)
     ) returns (
       uint256 quotedIn, uint256 quotedOut
     ) {

@@ -86,44 +86,85 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
 
   // ============ Hypothetical quotes ============
 
-  /// @notice Quote swap at caller-supplied bid/ask prices via simulateSwapAndRevert.
+  /// @notice Quote exact-input swap at caller-supplied bid/ask prices via simulateSwapAndRevert.
   /// @dev Uses msg.sender as recipient and empty extensionData; use the overload when extensions gate on those fields.
   /// @param pool MetricOmm pool address.
   /// @param zeroForOne `true` sells token0 for token1.
-  /// @param amountSpecified Positive for exact input, negative for exact output.
+  /// @param amountIn Exact input amount.
   /// @param priceLimitX64 Q64.64 execution bound.
   /// @param bidPriceX64 Hypothetical bid price in Q64.64.
   /// @param askPriceX64 Hypothetical ask price in Q64.64.
   /// @return amountIn Input token amount for the swap.
   /// @return amountOut Output token amount for the swap.
-  function quoteHypotheticalSwap(
+  function quoteHypotheticalExactInput(
     address pool,
     bool zeroForOne,
-    int128 amountSpecified,
+    uint128 amountIn,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64
-  ) external returns (uint256 amountIn, uint256 amountOut);
+  ) external returns (uint256, uint256);
 
-  /// @notice Quote swap at caller-supplied bid/ask with explicit extension context.
+  /// @notice Quote exact-input swap at caller-supplied bid/ask with explicit extension context.
   /// @param pool MetricOmm pool address.
   /// @param recipient Swap recipient passed to simulateSwapAndRevert.
   /// @param zeroForOne `true` sells token0 for token1.
-  /// @param amountSpecified Positive for exact input, negative for exact output.
+  /// @param amountIn Exact input amount.
   /// @param priceLimitX64 Q64.64 execution bound.
   /// @param bidPriceX64 Hypothetical bid price in Q64.64.
   /// @param askPriceX64 Hypothetical ask price in Q64.64.
   /// @param extensionData Opaque bytes forwarded to the pool swap extension.
   /// @return amountIn Input token amount for the swap.
   /// @return amountOut Output token amount for the swap.
-  function quoteHypotheticalSwap(
+  function quoteHypotheticalExactInput(
     address pool,
     address recipient,
     bool zeroForOne,
-    int128 amountSpecified,
+    uint128 amountIn,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
-    bytes calldata extensionData
-  ) external returns (uint256 amountIn, uint256 amountOut);
+    bytes memory extensionData
+  ) external returns (uint256, uint256);
+
+  /// @notice Quote exact-output swap at caller-supplied bid/ask prices via simulateSwapAndRevert.
+  /// @dev Uses msg.sender as recipient and empty extensionData; use the overload when extensions gate on those fields.
+  /// @param pool MetricOmm pool address.
+  /// @param zeroForOne `true` sells token0 for token1.
+  /// @param amountOutDesired Exact output amount.
+  /// @param priceLimitX64 Q64.64 execution bound.
+  /// @param bidPriceX64 Hypothetical bid price in Q64.64.
+  /// @param askPriceX64 Hypothetical ask price in Q64.64.
+  /// @return amountIn Input token amount for the swap.
+  /// @return amountOut Output token amount for the swap.
+  function quoteHypotheticalExactOutput(
+    address pool,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint128 bidPriceX64,
+    uint128 askPriceX64
+  ) external returns (uint256, uint256);
+
+  /// @notice Quote exact-output swap at caller-supplied bid/ask with explicit extension context.
+  /// @param pool MetricOmm pool address.
+  /// @param recipient Swap recipient passed to simulateSwapAndRevert.
+  /// @param zeroForOne `true` sells token0 for token1.
+  /// @param amountOutDesired Exact output amount.
+  /// @param priceLimitX64 Q64.64 execution bound.
+  /// @param bidPriceX64 Hypothetical bid price in Q64.64.
+  /// @param askPriceX64 Hypothetical ask price in Q64.64.
+  /// @param extensionData Opaque bytes forwarded to the pool swap extension.
+  /// @return amountIn Input token amount for the swap.
+  /// @return amountOut Output token amount for the swap.
+  function quoteHypotheticalExactOutput(
+    address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
+    bytes memory extensionData
+  ) external returns (uint256, uint256);
 }
