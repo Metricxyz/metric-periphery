@@ -10,7 +10,7 @@ import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MetricOmmSimpleRouter} from "../../contracts/MetricOmmSimpleRouter.sol";
-import {MetricOmmPoolQuoter} from "../../contracts/common/MetricOmmPoolQuoter.sol";
+import {MetricOmmSwapQuoter} from "../../contracts/lens/MetricOmmSwapQuoter.sol";
 import {MockWETH9} from "../mocks/MockWETH9.sol";
 import {RouterTestFactory} from "../RouterTestFactory.sol";
 import {LiquidityHelper} from "./LiquidityHelper.sol";
@@ -75,7 +75,7 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
   uint128 internal constant MAX_INT128_AS_UINT128 = uint128(type(int128).max);
 
   MetricOmmSimpleRouter internal router;
-  MetricOmmPoolQuoter internal quoter;
+  MetricOmmSwapQuoter internal quoter;
   RouterTestFactory internal factoryStub;
   MockWETH9 internal weth;
   MockERC20 internal token1;
@@ -111,8 +111,8 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
     oracle.setTokens(address(weth), address(token1));
     oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64));
 
-    router = new MetricOmmSimpleRouter();
-    quoter = new MetricOmmPoolQuoter();
+    router = new MetricOmmSimpleRouter(address(weth));
+    quoter = new MetricOmmSwapQuoter();
     lpContract = new LiquidityHelper();
 
     pool = _deployPool(address(weth), address(token1));
@@ -226,6 +226,7 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
   }
 
   function _assertRouterEmpty() internal view {
+    assertEq(address(router).balance, 0, "router eth");
     assertEq(weth.balanceOf(address(router)), 0, "router weth");
     assertEq(token1.balanceOf(address(router)), 0, "router token1");
     assertEq(token2.balanceOf(address(router)), 0, "router token2");

@@ -11,7 +11,7 @@ import {BinState} from "@metric-core/types/PoolStorage.sol";
 import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
-import {MetricOmmPoolStateView} from "../contracts/lens/MetricOmmPoolStateView.sol";
+import {MetricOmmPoolStateView} from "../contracts/common/MetricOmmPoolStateView.sol";
 import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {MetricOmmPoolLiquidityAdder} from "../contracts/MetricOmmPoolLiquidityAdder.sol";
 import {IMetricOmmPoolLiquidityAdder} from "../contracts/interfaces/IMetricOmmPoolLiquidityAdder.sol";

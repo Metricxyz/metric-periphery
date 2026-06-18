@@ -8,13 +8,12 @@ import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFacto
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
-import {MetricOmmPoolQuoter} from "../common/MetricOmmPoolQuoter.sol";
-import {MetricOmmPoolStateView} from "./MetricOmmPoolStateView.sol";
+import {MetricOmmPoolStateView} from "../common/MetricOmmPoolStateView.sol";
 
 /// @title MetricOmmPoolDataProvider
 /// @notice Read-only swap data for MetricOMM pools: per-bin depth ladders and revert-based quotes.
 /// @dev For off-chain queries only (e.g. `eth_call`, indexers, UIs). Do not call from other contracts inside a transaction; this lens is not gas-optimized for on-chain composition.
-contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateView {
+contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
   using SafeCast for uint256;
 
   // ============ Errors ============

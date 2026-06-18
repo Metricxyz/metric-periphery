@@ -23,8 +23,8 @@ import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
 import {PoolInitPreprocessor} from "../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MockWETH9} from "./mocks/MockWETH9.sol";
-import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
-import {IMetricOmmPoolSwapper} from "../contracts/interfaces/IMetricOmmPoolSwapper.sol";
+import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
+import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 
@@ -146,7 +146,7 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
       MockERC20 token0,
       MockERC20 token1,
       MetricOmmPoolDataProvider helper,
-      MetricOmmPoolSwapper router,
+      MetricOmmSimpleRouter router,
       RouterTestFactory factoryStub,
       LiquiditySeederForSwapData seeder
     )
@@ -203,7 +203,7 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     );
 
     helper = new MetricOmmPoolDataProvider(address(factoryStub));
-    router = new MetricOmmPoolSwapper(address(new MockWETH9()));
+    router = new MetricOmmSimpleRouter(address(new MockWETH9()));
     seeder = new LiquiditySeederForSwapData();
 
     uint256 sharesPerBin = sharesPerBinOverride == 0 ? SHARES_PER_BIN : sharesPerBinOverride;
@@ -236,20 +236,10 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     }
   }
 
-  function _tryWarmupSwap(MetricOmmPoolSwapper router, address pool, bool zeroForOne, uint256 amountIn) internal {
-    try router.swapExactInput(
-      pool,
-      address(this),
-      zeroForOne,
-      uint128(amountIn),
-      zeroForOne ? uint128(0) : type(uint128).max,
-      0,
-      type(uint256).max
-    ) returns (
-      uint256, uint256
-    ) {}
+  function _tryWarmupSwap(MetricOmmSimpleRouter router, address pool, bool zeroForOne, uint256 amountIn) internal {
+    try this.routerExactInputExternal(router, pool, zeroForOne, amountIn) returns (uint256) {}
     catch (bytes memory reason) {
-      if (reason.length >= 4 && bytes4(reason) != IMetricOmmPoolSwapper.InvalidSwapDeltas.selector) {
+      if (reason.length >= 4 && bytes4(reason) != IMetricOmmSimpleRouter.InvalidSwapDeltas.selector) {
         assembly ("memory-safe") {
           revert(add(reason, 32), mload(reason))
         }
@@ -349,27 +339,19 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
   }
 
   function _swapExactOutputUntilNonZero(
-    MetricOmmPoolSwapper router,
+    MetricOmmSimpleRouter router,
     address pool,
     bool zeroForOne,
     uint256 amountOutStart
   ) internal returns (uint256 amountOut, uint256 amountInUsed) {
     uint256 amountOutDesired = amountOutStart;
     for (uint256 i; i < 8; i++) {
-      try router.swapExactOutput(
-        pool,
-        address(this),
-        zeroForOne,
-        uint128(amountOutDesired),
-        zeroForOne ? uint128(0) : type(uint128).max,
-        type(uint256).max,
-        type(uint256).max
-      ) returns (
-        uint256 out, uint256 used
+      try this.routerExactOutputExternal(router, pool, zeroForOne, amountOutDesired) returns (
+        uint256 used, uint256 out
       ) {
         if (out > 0 && used > 0) return (out, used);
       } catch (bytes memory reason) {
-        if (reason.length >= 4 && bytes4(reason) != IMetricOmmPoolSwapper.InvalidSwapDeltas.selector) {
+        if (reason.length >= 4 && bytes4(reason) != IMetricOmmSimpleRouter.InvalidSwapDeltas.selector) {
           assembly ("memory-safe") {
             revert(add(reason, 32), mload(reason))
           }
@@ -403,7 +385,7 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
   }
 
   function _randomWalkSwaps(
-    MetricOmmPoolSwapper router,
+    MetricOmmSimpleRouter router,
     address pool,
     uint8 token0Decimals,
     uint8 token1Decimals,
@@ -418,17 +400,13 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
       uint256 hi = 5_000_000 * 10 ** uint256(zf1 ? token0Decimals : token1Decimals);
       uint256 amt = bound(s >> 1, lo, hi);
       if (amt > type(uint128).max / 2) amt = type(uint128).max / 2;
-      try router.swapExactInput(
-        pool, address(this), zf1, uint128(amt), zf1 ? uint128(0) : type(uint128).max, 0, type(uint256).max
-      ) returns (
-        uint256, uint256
-      ) {}
+      try this.routerExactInputExternal(router, pool, zf1, amt) returns (uint256) {}
       catch (bytes memory reason) {
         if (reason.length >= 4) {
           bytes4 sel = bytes4(reason);
           if (
-            sel != IMetricOmmPoolSwapper.InvalidSwapDeltas.selector
-              && sel != IMetricOmmPoolSwapper.AmountSpecifiedMismatch.selector
+            sel != IMetricOmmSimpleRouter.InvalidSwapDeltas.selector
+              && sel != IMetricOmmSimpleRouter.InsufficientOutput.selector
           ) {
             assembly ("memory-safe") {
               revert(add(reason, 32), mload(reason))
@@ -437,5 +415,64 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
         }
       }
     }
+  }
+
+  function routerExactInputExternal(MetricOmmSimpleRouter router, address pool, bool zeroForOne, uint256 amountIn)
+    external
+    returns (uint256 amountOut)
+  {
+    return _routerExactInput(router, pool, zeroForOne, amountIn);
+  }
+
+  function routerExactOutputExternal(
+    MetricOmmSimpleRouter router,
+    address pool,
+    bool zeroForOne,
+    uint256 amountOutDesired
+  ) external returns (uint256 amountInUsed, uint256 amountOut) {
+    return _routerExactOutput(router, pool, zeroForOne, amountOutDesired);
+  }
+
+  function _routerExactInput(MetricOmmSimpleRouter router, address pool, bool zeroForOne, uint256 amountIn)
+    internal
+    returns (uint256 amountOut)
+  {
+    PoolImmutables memory imm = IMetricOmmPool(pool).getImmutables();
+    return router.exactInputSingle(
+      IMetricOmmSimpleRouter.ExactInputSingleParams({
+        pool: pool,
+        tokenIn: zeroForOne ? imm.token0 : imm.token1,
+        tokenOut: zeroForOne ? imm.token1 : imm.token0,
+        zeroForOne: zeroForOne,
+        amountIn: uint128(amountIn),
+        amountOutMinimum: 0,
+        recipient: address(this),
+        deadline: type(uint256).max,
+        priceLimitX64: zeroForOne ? uint128(0) : type(uint128).max,
+        extensionData: ""
+      })
+    );
+  }
+
+  function _routerExactOutput(MetricOmmSimpleRouter router, address pool, bool zeroForOne, uint256 amountOutDesired)
+    internal
+    returns (uint256 amountInUsed, uint256 amountOut)
+  {
+    PoolImmutables memory imm = IMetricOmmPool(pool).getImmutables();
+    amountInUsed = router.exactOutputSingle(
+      IMetricOmmSimpleRouter.ExactOutputSingleParams({
+        pool: pool,
+        tokenIn: zeroForOne ? imm.token0 : imm.token1,
+        tokenOut: zeroForOne ? imm.token1 : imm.token0,
+        zeroForOne: zeroForOne,
+        amountOut: uint128(amountOutDesired),
+        amountInMaximum: type(uint128).max,
+        recipient: address(this),
+        deadline: type(uint256).max,
+        priceLimitX64: zeroForOne ? uint128(0) : type(uint128).max,
+        extensionData: ""
+      })
+    );
+    amountOut = amountOutDesired;
   }
 }

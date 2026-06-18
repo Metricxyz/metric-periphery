@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetricOmmSimpleRouter} from "../interfaces/IMetricOmmSimpleRouter.sol";
 import {TransientCallbackPool} from "../libraries/TransientCallbackPool.sol";
@@ -10,7 +8,6 @@ import {TransientCallbackPool} from "../libraries/TransientCallbackPool.sol";
 /// @title MetricOmmSwapRouterBase
 /// @notice Shared settlement helpers for exact-input and exact-output routers.
 abstract contract MetricOmmSwapRouterBase {
-  using SafeERC20 for IERC20;
   using SafeCast for int256;
   using SafeCast for uint256;
 
@@ -58,16 +55,6 @@ abstract contract MetricOmmSwapRouterBase {
 
   function _requireExpectedCallbackCaller(address caller) internal view {
     TransientCallbackPool.requireCaller(caller);
-  }
-
-  // ============ Internal: settlement ============
-
-  function _pay(address token, address payer, address to, uint256 amount) internal {
-    if (payer == address(this)) {
-      IERC20(token).safeTransfer(to, amount);
-      return;
-    }
-    IERC20(token).safeTransferFrom(payer, to, amount);
   }
 
   function _getPositiveAmount(int256 amount0Delta, int256 amount1Delta) internal pure returns (int256 amount) {
