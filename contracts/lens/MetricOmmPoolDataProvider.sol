@@ -12,7 +12,7 @@ import {MetricOmmPoolQuoter} from "../common/MetricOmmPoolQuoter.sol";
 import {MetricOmmPoolStateView} from "./MetricOmmPoolStateView.sol";
 
 /// @title MetricOmmPoolDataProvider
-/// @notice Read-only swap data for MetricOMM pools: fee-adjusted bid/ask, per-bin depth ladders, and revert-based quotes.
+/// @notice Read-only swap data for MetricOMM pools: per-bin depth ladders and revert-based quotes.
 /// @dev For off-chain queries only (e.g. `eth_call`, indexers, UIs). Do not call from other contracts inside a transaction; this lens is not gas-optimized for on-chain composition.
 contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateView {
   using SafeCast for uint256;
@@ -98,44 +98,6 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
 
   // ============ External: swap data views ============
 
-  // ---- Best bid / ask (marginal + fee stack) ----
-
-  /// @notice Returns fee-adjusted best executable bid/ask prices in Q64.64.
-  function getBestBidAndAsk(address pool) external returns (uint128 bestBidX64, uint128 bestAskX64) {
-    address provider = _resolvePriceProvider(pool);
-    (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
-    if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
-
-    (uint24 protocolSpreadFeeE6, uint24 adminSpreadFeeE6, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) =
-      IMetricOmmPoolFactory(FACTORY).poolFeeConfig(pool);
-    uint256 notionalFeeE8 = uint256(protocolNotionalFeeE8) + uint256(adminNotionalFeeE8);
-    if (notionalFeeE8 >= ONE_E8) revert InvalidNotionalFee();
-
-    (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
-    (,, uint16 lengthE6, uint16 addFeeBuyE6, uint16 addFeeSellE6) = PoolStateLibrary._binState(pool, curBinIdx);
-
-    uint256 midPriceX64 = Math.sqrt(uint256(bidFromOracleX64) * uint256(askFromOracleX64));
-    uint256 lowerPriceX64 = _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6, midPriceX64, Math.Rounding.Floor);
-    // forge-lint: disable-next-line(unsafe-typecast)
-    int256 distUpperE6 = int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6));
-    // safe typecast: factory validates all distances at creation of pool
-    // forge-lint: disable-next-line(unsafe-typecast)
-    uint256 upperPriceX64 = _distanceE6ToPriceX64(int24(distUpperE6), midPriceX64, Math.Rounding.Floor);
-    uint256 marginalPriceX64 =
-      SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, curPosInBin, Math.Rounding.Floor).toUint128();
-
-    uint256 buySpreadFeeE6 = uint256(protocolSpreadFeeE6) + uint256(adminSpreadFeeE6) + uint256(addFeeBuyE6);
-    uint256 sellSpreadFeeE6 = uint256(protocolSpreadFeeE6) + uint256(adminSpreadFeeE6) + uint256(addFeeSellE6);
-
-    uint256 askBeforeNotional =
-      Math.mulDiv(uint256(marginalPriceX64), ONE_E6 + buySpreadFeeE6, ONE_E6, Math.Rounding.Ceil);
-    uint256 bidAfterSpread =
-      Math.mulDiv(uint256(marginalPriceX64), ONE_E6, ONE_E6 + sellSpreadFeeE6, Math.Rounding.Floor);
-
-    bestAskX64 = Math.mulDiv(askBeforeNotional, ONE_E8, ONE_E8 - notionalFeeE8, Math.Rounding.Ceil).toUint128();
-    bestBidX64 = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor).toUint128();
-  }
-
   /// @notice Returns current distance from provided/mid price in signed X64 percentage units.
   function distanceFromProvidedPriceX64(address pool) external view returns (int256 distanceX64) {
     (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
@@ -156,27 +118,6 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolQuoter, MetricOmmPoolStateVie
     // casting to `int256` is safe because `inBinDistX64` is non-negative and bounded by one-bin distance in X64
     // forge-lint: disable-next-line(unsafe-typecast)
     distanceX64 = signedBaseDistX64 + int256(inBinDistX64);
-  }
-
-  /// @notice Returns current in-bin marginal price in X64 format.
-  function currentPriceX64(address pool) external returns (uint256 currentPriceX64Value) {
-    address provider = _resolvePriceProvider(pool);
-    (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(provider).getBidAndAskPrice();
-    if (bidFromOracleX64 == 0 || bidFromOracleX64 > askFromOracleX64) revert InvalidOraclePrice();
-
-    (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
-    (,, uint16 lengthE6,,) = PoolStateLibrary._binState(pool, curBinIdx);
-
-    uint256 midPriceX64 = Math.sqrt(uint256(bidFromOracleX64) * uint256(askFromOracleX64));
-    uint256 lowerPriceX64 =
-      _priceFromMidAndDistE6(midPriceX64, int256(curBinDistFromProvidedPriceE6), Math.Rounding.Floor);
-    // forge-lint: disable-next-line(unsafe-typecast)
-    uint256 upperPriceX64 = _priceFromMidAndDistE6(
-      midPriceX64, int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6)), Math.Rounding.Floor
-    );
-
-    currentPriceX64Value =
-      SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, uint256(curPosInBin), Math.Rounding.Floor);
   }
 
   // ---- Per-bin depth ladders ----

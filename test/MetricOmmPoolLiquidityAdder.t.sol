@@ -40,8 +40,12 @@ contract MockPriceProviderLPH is IPriceProvider {
     return (bidPrice, askPrice);
   }
 
-  function getTokens() external view returns (address, address) {
-    return (baseToken, quoteToken);
+  function token0() external view returns (address) {
+    return baseToken;
+  }
+
+  function token1() external view returns (address) {
+    return quoteToken;
   }
 
   function getBidPrice() external view returns (uint256) {
