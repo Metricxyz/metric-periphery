@@ -33,14 +33,14 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
       router.exactInputSingle.selector,
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(permitPool),
-        zeroForOne: true,
         tokenIn: address(permitToken),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountIn: amountIn,
         amountOutMinimum: 0,
-        priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: 0,
         extensionData: ""
       })
     );
@@ -91,14 +91,14 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
       router.exactInputSingle.selector,
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(pool),
-        zeroForOne: true,
         tokenIn: address(weth),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountIn: 500,
         amountOutMinimum: 0,
-        priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: 0,
         extensionData: ""
       })
     );
@@ -106,14 +106,14 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
       router.exactInputSingle.selector,
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(pool),
-        zeroForOne: true,
         tokenIn: address(weth),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountIn: 500,
         amountOutMinimum: 0,
-        priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: 0,
         extensionData: ""
       })
     );
@@ -132,14 +132,14 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
       router.exactInputSingle.selector,
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(pool),
-        zeroForOne: true,
         tokenIn: address(weth),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountIn: 100,
         amountOutMinimum: 0,
-        priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: 0,
         extensionData: ""
       })
     );
@@ -147,14 +147,14 @@ contract MetricOmmSimpleRouterMulticallTest is SimpleRouterTestBase {
       router.exactInputSingle.selector,
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(pool),
-        zeroForOne: true,
         tokenIn: address(weth),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountIn: 100,
         amountOutMinimum: type(uint128).max,
-        priceLimitX64: 0,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: 0,
         extensionData: ""
       })
     );

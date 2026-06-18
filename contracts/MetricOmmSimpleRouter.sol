@@ -2,8 +2,9 @@
 pragma solidity ^0.8.35;
 
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {MetricOmmSwapRouterBase} from "./base/MetricOmmSwapRouterBase.sol";
+import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
 import {IMetricOmmSimpleRouter} from "./interfaces/IMetricOmmSimpleRouter.sol";
 import {IMulticall} from "./interfaces/IMulticall.sol";
@@ -12,10 +13,12 @@ import {IMulticall} from "./interfaces/IMulticall.sol";
 /// @notice Exact-input and exact-output swaps through one or more MetricOmm pools.
 /// @dev Expected callback pool and swap mode are stored in transient storage; callback data carries hop context.
 
-contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit, IMetricOmmSimpleRouter {
+contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, SelfPermit, IMetricOmmSimpleRouter {
   /// @notice Transient callback mode is not supported by this router.
   /// @param callbackMode Unrecognized mode read from transient storage.
   error InvalidCallbackMode(uint8 callbackMode);
+
+  constructor(address weth) PeripheryPayments(weth) {}
 
   // ============ Types ============
 
@@ -36,8 +39,11 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   // ============ External: callback ============
 
   /// @inheritdoc IMulticall
-  function multicall(bytes[] calldata data) public override(Multicall, IMulticall) returns (bytes[] memory results) {
-    return super.multicall(data);
+  function multicall(bytes[] calldata data) public payable override returns (bytes[] memory results) {
+    results = new bytes[](data.length);
+    for (uint256 i = 0; i < data.length; i++) {
+      results[i] = Address.functionDelegateCall(address(this), data[i]);
+    }
   }
 
   function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external override {
@@ -61,7 +67,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   // ============ External: exact input ============
 
   /// @inheritdoc IMetricOmmSimpleRouter
-  function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut) {
+  function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut) {
     _checkDeadline(params.deadline);
     _validatePriceLimit(params.zeroForOne, params.priceLimitX64);
 
@@ -86,7 +92,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   /// @dev Walks `pools[0..n-1]` forward. Each hop swaps a positive `amountSpecified`; the prior hop's output
   ///      becomes the next hop's input. Intermediate tokens stay on this contract; the final hop sends output to
   ///      `recipient`.
-  function exactInput(ExactInputParams calldata params) external returns (uint256 amountOut) {
+  function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut) {
     _checkDeadline(params.deadline);
     _validatePath(params.tokens, params.pools, params.extensionDatas);
 
@@ -121,7 +127,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   // ============ External: exact output ============
 
   /// @inheritdoc IMetricOmmSimpleRouter
-  function exactOutputSingle(ExactOutputSingleParams calldata params) external returns (uint256 amountIn) {
+  function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn) {
     _checkDeadline(params.deadline);
     _validatePriceLimit(params.zeroForOne, params.priceLimitX64);
 
@@ -150,7 +156,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
   ///      recursively inside `metricOmmSwapCallback`: each callback pays the current hop's input, then (unless on
   ///      the last pool) swaps the next pool for exactly that input amount. The first swap's input delta is total
   ///      `amountIn`.
-  function exactOutput(ExactOutputParams calldata params) external returns (uint256 amountIn) {
+  function exactOutput(ExactOutputParams calldata params) external payable returns (uint256 amountIn) {
     _checkDeadline(params.deadline);
     _validatePath(params.tokens, params.pools, params.extensionDatas);
 
@@ -189,7 +195,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
 
   function _justPayCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) private {
     JustPayCallbackData memory cb = abi.decode(data, (JustPayCallbackData));
-    _pay(cb.tokenToPay, cb.payer, msg.sender, uint256(_getPositiveAmount(amount0Delta, amount1Delta)));
+    pay(cb.tokenToPay, cb.payer, msg.sender, uint256(_getPositiveAmount(amount0Delta, amount1Delta)));
   }
 
   function _exactOutputIterateCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) private {
@@ -203,7 +209,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, Multicall, SelfPermit
       uint256 amountIn = uint256(amountToPay);
       if (amountIn > cb.amountInMax) revert InputTooHigh(amountIn, cb.amountInMax);
       _setExactOutputAmountIn(amountIn);
-      _pay(cb.tokens[0], cb.payer, msg.sender, amountIn);
+      pay(cb.tokens[0], cb.payer, msg.sender, amountIn);
       return;
     }
     hop--;

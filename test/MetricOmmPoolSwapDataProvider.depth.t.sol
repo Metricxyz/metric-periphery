@@ -5,7 +5,7 @@ pragma solidity ^0.8.35;
 
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
-import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
+import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 import {
@@ -29,7 +29,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
   MockERC20 internal token0;
   MockERC20 internal token1;
   MetricOmmPoolDataProvider internal helper;
-  MetricOmmPoolSwapper internal router;
+  MetricOmmSimpleRouter internal router;
   RouterTestFactory internal factory;
   LiquiditySeederForSwapData internal seeder;
 

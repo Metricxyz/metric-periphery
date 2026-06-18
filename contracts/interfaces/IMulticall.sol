@@ -7,5 +7,5 @@ interface IMulticall {
   /// @notice Executes each calldata element on this contract via delegatecall.
   /// @param data Encoded function calls to batch.
   /// @return results Return data for each batched call, in order.
-  function multicall(bytes[] calldata data) external returns (bytes[] memory results);
+  function multicall(bytes[] calldata data) external payable returns (bytes[] memory results);
 }

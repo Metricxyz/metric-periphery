@@ -7,7 +7,7 @@ pragma solidity ^0.8.35;
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
-import {MetricOmmPoolSwapper} from "../contracts/MetricOmmPoolSwapper.sol";
+import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 import {MetricOmmPoolDataProviderTestBase} from "./MetricOmmPoolDataProviderTestBase.sol";
 
@@ -33,7 +33,7 @@ contract MetricOmmPoolDataProviderTest is MetricOmmPoolDataProviderTestBase {
     uint128 askPriceX64,
     uint8 warmupMode
   ) internal {
-    (MetricOmmPool pool,,,,, MetricOmmPoolSwapper router,,) =
+    (MetricOmmPool pool,,,,, MetricOmmSimpleRouter router,,) =
       _deployCase(token0Decimals, token1Decimals, bidPriceX64, askPriceX64, warmupMode, 0, false);
 
     uint256 smallOut1 = _smallTradeAmount(token1Decimals);

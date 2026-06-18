@@ -4,6 +4,7 @@ pragma solidity ^0.8.35;
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {IMulticall} from "./IMulticall.sol";
 import {ISelfPermit} from "./ISelfPermit.sol";
+import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 
 /// @title IMetricOmmSimpleRouter
 /// @notice ERC-20 exact-input and exact-output swaps through one or more MetricOmm pools.
@@ -14,7 +15,7 @@ import {ISelfPermit} from "./ISelfPermit.sol";
 ///      Multihop exact-output executes `pools` from last to first; `amountOut` is `tokens[tokens.length - 1]`.
 ///      Multihop paths omit per-hop price limits; slippage is controlled solely by `amountOutMinimum` (exact input)
 ///      or `amountInMaximum` (exact output).
-interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMulticall {
+interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMulticall, IPeripheryPayments {
   // ============ Errors ============
 
   /// @notice Swap deadline is in the past.
@@ -57,26 +58,26 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
 
   /// @notice Single-hop exact-input swap parameters.
   /// @param pool MetricOmm pool address for this hop.
-  /// @param zeroForOne `true` sells token0 for token1.
   /// @param tokenIn ERC-20 the router pulls from the payer during the swap callback; caller must set correctly off-chain.
   /// @param tokenOut Output token for this hop; informational for integrators, unused on-chain.
+  /// @param zeroForOne `true` sells token0 for token1.
   /// @param amountIn Exact input amount.
   /// @param amountOutMinimum Minimum output amount required.
-  /// @param priceLimitX64 Q64.64 execution bound. `zeroForOne`: `0` is unconstrained lower bound.
-  ///        `!zeroForOne`: `type(uint128).max` is unconstrained upper bound. Opposite sentinels revert.
   /// @param recipient Address that receives the output token.
   /// @param deadline Timestamp after which the swap reverts.
+  /// @param priceLimitX64 Q64.64 execution bound. `zeroForOne`: `0` is unconstrained lower bound.
+  ///        `!zeroForOne`: `type(uint128).max` is unconstrained upper bound. Opposite sentinels revert.
   /// @param extensionData Opaque bytes forwarded to the pool swap extension.
   struct ExactInputSingleParams {
     address pool;
-    bool zeroForOne;
     address tokenIn;
     address tokenOut;
+    bool zeroForOne;
     uint128 amountIn;
     uint128 amountOutMinimum;
-    uint128 priceLimitX64;
     address recipient;
     uint256 deadline;
+    uint128 priceLimitX64;
     bytes extensionData;
   }
 
@@ -104,26 +105,26 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
 
   /// @notice Single-hop exact-output swap parameters.
   /// @param pool MetricOmm pool address for this hop.
-  /// @param zeroForOne `true` sells token0 for token1.
   /// @param tokenIn ERC-20 the router pulls from the payer during the swap callback; caller must set correctly off-chain.
   /// @param tokenOut Output token for this hop; informational for integrators, unused on-chain.
+  /// @param zeroForOne `true` sells token0 for token1.
   /// @param amountOut Exact output amount.
   /// @param amountInMaximum Maximum input amount allowed.
-  /// @param priceLimitX64 Q64.64 execution bound. `zeroForOne`: `0` is unconstrained lower bound.
-  ///        `!zeroForOne`: `type(uint128).max` is unconstrained upper bound. Opposite sentinels revert.
   /// @param recipient Address that receives the output token.
   /// @param deadline Timestamp after which the swap reverts.
+  /// @param priceLimitX64 Q64.64 execution bound. `zeroForOne`: `0` is unconstrained lower bound.
+  ///        `!zeroForOne`: `type(uint128).max` is unconstrained upper bound. Opposite sentinels revert.
   /// @param extensionData Opaque bytes forwarded to the pool swap extension.
   struct ExactOutputSingleParams {
     address pool;
-    bool zeroForOne;
     address tokenIn;
     address tokenOut;
+    bool zeroForOne;
     uint128 amountOut;
     uint128 amountInMaximum;
-    uint128 priceLimitX64;
     address recipient;
     uint256 deadline;
+    uint128 priceLimitX64;
     bytes extensionData;
   }
 
@@ -152,13 +153,13 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
 
   // ============ Mutating: exact input ============
 
-  function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut);
+  function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
 
-  function exactInput(ExactInputParams calldata params) external returns (uint256 amountOut);
+  function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 
   // ============ Mutating: exact output ============
 
-  function exactOutputSingle(ExactOutputSingleParams calldata params) external returns (uint256 amountIn);
+  function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn);
 
-  function exactOutput(ExactOutputParams calldata params) external returns (uint256 amountIn);
+  function exactOutput(ExactOutputParams calldata params) external payable returns (uint256 amountIn);
 }

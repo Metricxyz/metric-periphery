@@ -53,7 +53,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     uint128 priceLimit = _priceLimit(true);
 
     (uint256 quotedIn, uint256 quotedOut) =
-      swapQuoter.quoteSwapExactIn(address(pool), recipient, true, amountIn, priceLimit, hex"");
+      swapQuoter.quoteLiveExactIn(address(pool), recipient, true, amountIn, priceLimit, hex"");
 
     assertEq(quotedIn, amountIn, "quoted amountIn");
     assertGt(quotedOut, 0, "quoted amountOut");
@@ -62,14 +62,14 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     uint256 actualOut = router.exactInputSingle(
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(pool),
-        zeroForOne: true,
         tokenIn: address(weth),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountIn: amountIn,
         amountOutMinimum: 0,
-        priceLimitX64: priceLimit,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: priceLimit,
         extensionData: ""
       })
     );
@@ -82,7 +82,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     uint128 priceLimit = _priceLimit(true);
 
     (uint256 quotedIn, uint256 quotedOut) =
-      swapQuoter.quoteSwapExactOut(address(pool), recipient, true, amountOut, priceLimit, hex"");
+      swapQuoter.quoteLiveExactOut(address(pool), recipient, true, amountOut, priceLimit, hex"");
 
     assertEq(quotedOut, amountOut, "quoted amountOut");
     assertGt(quotedIn, 0, "quoted amountIn");
@@ -91,14 +91,14 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     uint256 actualIn = router.exactOutputSingle(
       IMetricOmmSimpleRouter.ExactOutputSingleParams({
         pool: address(pool),
-        zeroForOne: true,
         tokenIn: address(weth),
         tokenOut: address(token1),
+        zeroForOne: true,
         amountOut: amountOut,
         amountInMaximum: type(uint128).max,
-        priceLimitX64: priceLimit,
         recipient: recipient,
         deadline: _deadline(),
+        priceLimitX64: priceLimit,
         extensionData: ""
       })
     );

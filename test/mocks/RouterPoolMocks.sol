@@ -51,7 +51,8 @@ contract MaliciousPoolForSimpleRouter {
     external
     returns (int128, int128)
   {
-    MetricOmmSimpleRouter(msg.sender).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), callbackData);
+    MetricOmmSimpleRouter(payable(msg.sender))
+      .metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), callbackData);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
   }
 }
@@ -106,25 +107,26 @@ contract ReentrantPoolForSimpleRouter {
     returns (int128, int128)
   {
     nestedAttempted = true;
-    try MetricOmmSimpleRouter(msg.sender)
+    try MetricOmmSimpleRouter(payable(msg.sender))
       .exactInputSingle(
         IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(this),
-        zeroForOne: true,
         tokenIn: TOKEN0,
         tokenOut: TOKEN1,
+        zeroForOne: true,
         amountIn: 1,
         amountOutMinimum: 0,
-        priceLimitX64: 0,
         recipient: msg.sender,
         deadline: type(uint256).max,
+        priceLimitX64: 0,
         extensionData: ""
       })
       ) {
       nestedCompleted = true;
     } catch {}
 
-    MetricOmmSimpleRouter(msg.sender).metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), callbackData);
+    MetricOmmSimpleRouter(payable(msg.sender))
+      .metricOmmSwapCallback(int256(AMOUNT0_DELTA), int256(AMOUNT1_DELTA), callbackData);
     return (AMOUNT0_DELTA, AMOUNT1_DELTA);
   }
 }
@@ -176,7 +178,8 @@ contract WrongOutputPoolForSimpleRouter {
     external
     returns (int128, int128)
   {
-    MetricOmmSimpleRouter(msg.sender).metricOmmSwapCallback(int256(INPUT_DELTA), int256(OUTPUT_DELTA), callbackData);
+    MetricOmmSimpleRouter(payable(msg.sender))
+      .metricOmmSwapCallback(int256(INPUT_DELTA), int256(OUTPUT_DELTA), callbackData);
     return (INPUT_DELTA, OUTPUT_DELTA);
   }
 }
