@@ -114,6 +114,9 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
           params.extensionDatas[i]
         );
 
+      int128 amountInActual = _amountIn(zeroForOne, amount0Delta, amount1Delta);
+      if (amountInActual < amount) revert InvalidInputAmountAtHop(uint8(i), amountInActual, amount);
+
       amount = _amountOut(zeroForOne, amount0Delta, amount1Delta);
     }
 

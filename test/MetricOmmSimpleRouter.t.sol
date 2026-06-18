@@ -832,6 +832,41 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     );
   }
 
+  function test_exactInput_revertsInvalidInputAmountAtHop() public {
+    WrongOutputPoolForSimpleRouter wrongPool =
+      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 400, -300);
+
+    address[] memory tokens = new address[](3);
+    tokens[0] = address(weth);
+    tokens[1] = address(token1);
+    tokens[2] = address(token2);
+
+    address[] memory pools = new address[](2);
+    pools[0] = address(wrongPool);
+    pools[1] = address(pool12);
+
+    bytes[] memory extensionDatas = new bytes[](2);
+
+    vm.prank(swapper);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IMetricOmmSimpleRouter.InvalidInputAmountAtHop.selector, uint8(0), int128(400), int256(2000)
+      )
+    );
+    router.exactInput(
+      IMetricOmmSimpleRouter.ExactInputParams({
+        tokens: tokens,
+        pools: pools,
+        extensionDatas: extensionDatas,
+        zeroForOneBitMap: 3,
+        amountIn: 2000,
+        amountOutMinimum: 0,
+        recipient: recipient,
+        deadline: _deadline()
+      })
+    );
+  }
+
   function test_exactOutput_revertsInvalidOutputAmountAtHop() public {
     WrongOutputPoolForSimpleRouter wrongPool =
       new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 500, -400);
@@ -873,7 +908,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 amountIn = uint128(bound(uint256(rawAmount), 1, 100_000));
     uint128 priceLimit = _priceLimit(zeroForOne);
 
-    try quoter.quoteHypotheticalExactInput(
+    try quoter.quoteHypotheticalExactInputSingle(
       address(pool), zeroForOne, amountIn, priceLimit, uint128(Q64), uint128(Q64)
     ) returns (
       uint256 quotedIn, uint256 quotedOut
@@ -911,7 +946,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 amountOut = uint128(bound(uint256(rawAmount), 1, 50_000));
     uint128 priceLimit = _priceLimit(zeroForOne);
 
-    try quoter.quoteHypotheticalExactOutput(
+    try quoter.quoteHypotheticalExactOutputSingle(
       address(pool), zeroForOne, amountOut, priceLimit, uint128(Q64), uint128(Q64)
     ) returns (
       uint256 quotedIn, uint256 quotedOut
