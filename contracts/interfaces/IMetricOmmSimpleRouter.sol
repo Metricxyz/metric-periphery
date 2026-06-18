@@ -50,6 +50,11 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   /// @param amountOut Actual output from the hop.
   /// @param amount Expected output for the next hop.
   error InvalidOutputAmountAtHop(uint8 hop, int128 amountOut, int256 amount);
+  /// @notice Exact-input hop consumed less input than requested (partial fill).
+  /// @param hop Hop index where the partial fill occurred.
+  /// @param amountIn Actual input consumed by the hop.
+  /// @param expected Requested input for the hop.
+  error InvalidInputAmountAtHop(uint8 hop, int128 amountIn, int256 expected);
   /// @notice Swap amount exceeds the maximum representable as a signed pool delta.
   /// @param amount Amount that does not fit in int128.
   error AmountTooLarge(uint128 amount);

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
+import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {MetricOmmSimpleRouter} from "../../contracts/MetricOmmSimpleRouter.sol";
 import {IMetricOmmSimpleRouter} from "../../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 
@@ -178,8 +179,7 @@ contract WrongOutputPoolForSimpleRouter {
     external
     returns (int128, int128)
   {
-    MetricOmmSimpleRouter(payable(msg.sender))
-      .metricOmmSwapCallback(int256(INPUT_DELTA), int256(OUTPUT_DELTA), callbackData);
+    IMetricOmmSwapCallback(msg.sender).metricOmmSwapCallback(int256(INPUT_DELTA), int256(OUTPUT_DELTA), callbackData);
     return (INPUT_DELTA, OUTPUT_DELTA);
   }
 }
