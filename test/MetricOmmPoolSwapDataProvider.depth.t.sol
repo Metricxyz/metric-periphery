@@ -84,7 +84,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
       address(pool), bidOracle, askOracle, depth.bids, true, 0, MAX_LOWEST_ROW_SIM_CHECKS
     );
 
-    (uint128 refBid, uint128 refAsk) = helper.getBestBidAndAsk(address(pool));
+    (uint256 refBid, uint256 refAsk) = _expectedBestBidAsk(address(pool), address(factory), address(oracle));
     assertEq(refBid, depth.referenceBestBidX64);
     assertEq(refAsk, depth.referenceBestAskX64);
   }
