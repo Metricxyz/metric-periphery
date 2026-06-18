@@ -3,13 +3,14 @@ pragma solidity ^0.8.35;
 
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {MetricOmmSwapQuoter} from "../contracts/lens/MetricOmmSwapQuoter.sol";
+import {IMetricOmmSwapQuoter} from "../contracts/interfaces/IMetricOmmSwapQuoter.sol";
 import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
 
 contract QuoteSwapResultDecodeProbe {
   function decode(bytes memory reason) external pure returns (int256 amount0Delta, int256 amount1Delta) {
     // forge-lint: disable-next-line(unsafe-typecast)
-    if (bytes4(reason) != MetricOmmSwapQuoter.QuoteSwapResult.selector) revert("unexpected selector");
+    if (bytes4(reason) != IMetricOmmSwapQuoter.QuoteSwapResult.selector) revert("unexpected selector");
     assembly ("memory-safe") {
       amount0Delta := mload(add(reason, 36))
       amount1Delta := mload(add(reason, 68))

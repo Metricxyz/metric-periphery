@@ -873,68 +873,78 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 amountIn = uint128(bound(uint256(rawAmount), 1, 100_000));
     uint128 priceLimit = _priceLimit(zeroForOne);
 
-    (int128 q0, int128 q1) = quoter.quoteHypotheticalSwap(
+    try quoter.quoteHypotheticalSwap(
       address(pool), zeroForOne, int128(int256(uint256(amountIn))), priceLimit, uint128(Q64), uint128(Q64)
-    );
-    int128 quotedOut = zeroForOne ? -q1 : -q0;
-    vm.assume(quotedOut > 0);
+    ) returns (
+      uint256 quotedIn, uint256 quotedOut
+    ) {
+      vm.assume(quotedOut > 0);
+      assertEq(quotedIn, amountIn, "quoted amountIn");
 
-    address tokenIn = zeroForOne ? address(weth) : address(token1);
-    address tokenOut = zeroForOne ? address(token1) : address(weth);
+      address tokenIn = zeroForOne ? address(weth) : address(token1);
+      address tokenOut = zeroForOne ? address(token1) : address(weth);
 
-    vm.prank(swapper);
-    uint256 amountOut = router.exactInputSingle(
-      IMetricOmmSimpleRouter.ExactInputSingleParams({
-        pool: address(pool),
-        tokenIn: tokenIn,
-        tokenOut: tokenOut,
-        zeroForOne: zeroForOne,
-        amountIn: amountIn,
-        amountOutMinimum: 0,
-        recipient: recipient,
-        deadline: _deadline(),
-        priceLimitX64: priceLimit,
-        extensionData: ""
-      })
-    );
+      vm.prank(swapper);
+      uint256 amountOut = router.exactInputSingle(
+        IMetricOmmSimpleRouter.ExactInputSingleParams({
+          pool: address(pool),
+          tokenIn: tokenIn,
+          tokenOut: tokenOut,
+          zeroForOne: zeroForOne,
+          amountIn: amountIn,
+          amountOutMinimum: 0,
+          recipient: recipient,
+          deadline: _deadline(),
+          priceLimitX64: priceLimit,
+          extensionData: ""
+        })
+      );
 
-    assertEq(amountOut, uint256(int256(quotedOut)), "output matches quote");
-    _assertRouterEmpty();
+      assertEq(amountOut, quotedOut, "output matches quote");
+      _assertRouterEmpty();
+    } catch {
+      vm.assume(false);
+    }
   }
 
   function testFuzz_exactOutputSingle_amountInWithinMax(uint96 rawAmount, bool zeroForOne) public {
     uint128 amountOut = uint128(bound(uint256(rawAmount), 1, 50_000));
     uint128 priceLimit = _priceLimit(zeroForOne);
 
-    (int128 q0, int128 q1) = quoter.quoteHypotheticalSwap(
+    try quoter.quoteHypotheticalSwap(
       address(pool), zeroForOne, -int128(int256(uint256(amountOut))), priceLimit, uint128(Q64), uint128(Q64)
-    );
-    int128 quotedIn = zeroForOne ? q0 : q1;
-    vm.assume(quotedIn > 0);
+    ) returns (
+      uint256 quotedIn, uint256 quotedOut
+    ) {
+      vm.assume(quotedIn > 0);
+      assertEq(quotedOut, amountOut, "quoted amountOut");
 
-    address tokenIn = zeroForOne ? address(weth) : address(token1);
-    address tokenOut = zeroForOne ? address(token1) : address(weth);
-    uint128 maxIn = uint128(uint256(int256(quotedIn)) * 2 + 1);
+      address tokenIn = zeroForOne ? address(weth) : address(token1);
+      address tokenOut = zeroForOne ? address(token1) : address(weth);
+      uint128 maxIn = uint128(quotedIn * 2 + 1);
 
-    vm.prank(swapper);
-    uint256 amountIn = router.exactOutputSingle(
-      IMetricOmmSimpleRouter.ExactOutputSingleParams({
-        pool: address(pool),
-        tokenIn: tokenIn,
-        tokenOut: tokenOut,
-        zeroForOne: zeroForOne,
-        amountOut: amountOut,
-        amountInMaximum: maxIn,
-        recipient: recipient,
-        deadline: _deadline(),
-        priceLimitX64: priceLimit,
-        extensionData: ""
-      })
-    );
+      vm.prank(swapper);
+      uint256 amountIn = router.exactOutputSingle(
+        IMetricOmmSimpleRouter.ExactOutputSingleParams({
+          pool: address(pool),
+          tokenIn: tokenIn,
+          tokenOut: tokenOut,
+          zeroForOne: zeroForOne,
+          amountOut: amountOut,
+          amountInMaximum: maxIn,
+          recipient: recipient,
+          deadline: _deadline(),
+          priceLimitX64: priceLimit,
+          extensionData: ""
+        })
+      );
 
-    assertLe(amountIn, maxIn, "amountIn <= max");
-    assertEq(amountIn, uint256(int256(quotedIn)), "amountIn matches quote");
-    _assertRouterEmpty();
+      assertLe(amountIn, maxIn, "amountIn <= max");
+      assertEq(amountIn, quotedIn, "amountIn matches quote");
+      _assertRouterEmpty();
+    } catch {
+      vm.assume(false);
+    }
   }
 
   function test_exactInputSingle_revertsInvalidPriceLimitForDirection() public {

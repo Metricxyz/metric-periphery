@@ -4,31 +4,14 @@ pragma solidity ^0.8.35;
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
+import {IMetricOmmSwapQuoter} from "../interfaces/IMetricOmmSwapQuoter.sol";
 
-/// @title MetricOmmSwapQuoter
-/// @notice Off-chain swap quotes: live oracle prices via pool.swap, or hypothetical prices via simulateSwapAndRevert.
-/// @dev For off-chain queries only (eth_call). Live quotes revert in the swap callback; hypothetical quotes decode SimulateSwap.
-contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
+contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   uint128 private constant MAX_INT128_AS_UINT128 = uint128(type(int128).max);
-
-  /// @notice Deliberate revert carrying swap deltas from the callback.
-  error QuoteSwapResult(int256 amount0Delta, int256 amount1Delta);
-  /// @notice Wrapped downstream revert from a quote path.
-  error WrappedError(address target, bytes4 selector, bytes reason);
-  /// @notice pool.swap completed without callback revert.
-  error QuoteDidNotRevert();
-  /// @notice simulateSwapAndRevert completed without SimulateSwap revert.
-  error HypotheticalQuoteDidNotRevert();
-  /// @notice Provided unsigned amount does not fit in int128.
-  error AmountTooLarge(uint128 amount);
-  /// @notice Deltas do not match expected exact-in/out shape.
-  error InvalidSwapDeltas();
-  /// @notice Price-limit sentinel invalid for swap direction.
-  error InvalidPriceLimitForDirection(bool zeroForOne, uint128 priceLimitX64);
 
   // ============ External: live quotes ============
 
-  /// @notice Quote exact-input swap using live pool prices.
+  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactIn(address pool, bool zeroForOne, uint128 amountIn, uint128 priceLimitX64)
     external
     returns (uint256, uint256)
@@ -36,9 +19,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     return quoteLiveExactIn(pool, address(this), zeroForOne, amountIn, priceLimitX64, hex"");
   }
 
-  /// @notice Quote exact-input swap with explicit recipient and extension context.
-  /// @return amountIn Input token amount for the swap.
-  /// @return amountOut Output token amount for the swap.
+  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactIn(
     address pool,
     address recipient,
@@ -50,10 +31,10 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     _validatePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) =
       _quoteLiveSwap(pool, recipient, zeroForOne, _toSignedExactInput(amountIn), priceLimitX64, extensionData);
-    return _decodeSwapAmounts(zeroForOne, amount0Delta, amount1Delta);
+    return _toUnsignedAmounts(zeroForOne, amount0Delta, amount1Delta);
   }
 
-  /// @notice Quote exact-output swap using live pool prices.
+  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactOut(address pool, bool zeroForOne, uint128 amountOutDesired, uint128 priceLimitX64)
     external
     returns (uint256, uint256)
@@ -61,9 +42,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     return quoteLiveExactOut(pool, address(this), zeroForOne, amountOutDesired, priceLimitX64, hex"");
   }
 
-  /// @notice Quote exact-output swap with explicit recipient and extension context.
-  /// @return amountIn Input token amount for the swap.
-  /// @return amountOut Output token amount for the swap.
+  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactOut(
     address pool,
     address recipient,
@@ -75,13 +54,12 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     _validatePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) =
       _quoteLiveSwap(pool, recipient, zeroForOne, _toSignedExactOutput(amountOutDesired), priceLimitX64, extensionData);
-    return _decodeSwapAmounts(zeroForOne, amount0Delta, amount1Delta);
+    return _toUnsignedAmounts(zeroForOne, amount0Delta, amount1Delta);
   }
 
   // ============ External: hypothetical quotes ============
 
-  /// @notice Quote swap at caller-supplied bid/ask prices via simulateSwapAndRevert.
-  /// @dev Uses msg.sender as recipient and empty extensionData; use the overload when extensions gate on those fields.
+  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalSwap(
     address pool,
     bool zeroForOne,
@@ -89,13 +67,14 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64
-  ) public virtual returns (int128 amount0Delta, int128 amount1Delta) {
-    return _quoteHypotheticalSwap(
+  ) public virtual returns (uint256 amountIn, uint256 amountOut) {
+    (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
       pool, msg.sender, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, hex""
     );
+    return _toUnsignedAmounts(zeroForOne, amount0Delta, amount1Delta);
   }
 
-  /// @notice Quote swap at caller-supplied bid/ask with explicit extension context.
+  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalSwap(
     address pool,
     address recipient,
@@ -105,10 +84,11 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 bidPriceX64,
     uint128 askPriceX64,
     bytes calldata extensionData
-  ) public virtual returns (int128 amount0Delta, int128 amount1Delta) {
-    return _quoteHypotheticalSwap(
+  ) public virtual returns (uint256 amountIn, uint256 amountOut) {
+    (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
       pool, recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, extensionData
     );
+    return _toUnsignedAmounts(zeroForOne, amount0Delta, amount1Delta);
   }
 
   // ============ External: callback ============
@@ -204,7 +184,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapCallback {
     revert WrappedError(pool, IMetricOmmPoolActions.simulateSwapAndRevert.selector, reason);
   }
 
-  function _decodeSwapAmounts(bool zeroForOne, int128 amount0Delta, int128 amount1Delta)
+  function _toUnsignedAmounts(bool zeroForOne, int128 amount0Delta, int128 amount1Delta)
     internal
     pure
     returns (uint256 amountIn, uint256 amountOut)
