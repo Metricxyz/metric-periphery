@@ -25,7 +25,7 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
   error InvalidSwapDeltas();
   /// @notice Price-limit sentinel invalid for swap direction.
   error InvalidPriceLimitForDirection(bool zeroForOne, uint128 priceLimitX64);
-  /// @notice Route arrays are inconsistent or too short for a multihop path.
+  /// @notice Route arrays are inconsistent, pools are not token-connected, or too short for a multihop path.
   error InvalidPath();
   /// @notice Exact-input hop consumed less input than requested (partial fill).
   error InvalidInputAmountAtHop(uint8 hop, uint256 amountIn, uint256 expectedAmountIn);
