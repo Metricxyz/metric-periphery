@@ -241,6 +241,21 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     assertEq(quotedOut, actualOut, "quote matches swap");
   }
 
+  function test_quoteLiveExactIn_revertsInvalidPath_disconnectedPools() public {
+    address[] memory pools = new address[](2);
+    pools[0] = address(pool);
+    pools[1] = address(pool);
+
+    bytes[] memory extensionDatas = new bytes[](2);
+
+    vm.expectRevert(IMetricOmmSwapQuoter.InvalidPath.selector);
+    swapQuoter.quoteLiveExactIn(
+      IMetricOmmSwapQuoter.QuoteExactInputParams({
+        pools: pools, extensionDatas: extensionDatas, zeroForOneBitMap: 3, amountIn: 2000
+      })
+    );
+  }
+
   function test_quoteLiveExactIn_revertsInvalidInputAmountAtHop() public {
     WrongOutputPoolForSimpleRouter wrongPool =
       new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 400, -300);
@@ -265,7 +280,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
 
   function test_quoteLiveExactOut_revertsInvalidOutputAmountAtHop() public {
     WrongOutputPoolForSimpleRouter wrongPool =
-      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 500, -400);
+      new WrongOutputPoolForSimpleRouter(address(token1), address(token2), 600, -400);
 
     address[] memory pools = new address[](2);
     pools[0] = address(pool);
