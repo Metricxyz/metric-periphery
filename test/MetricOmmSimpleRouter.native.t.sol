@@ -38,6 +38,71 @@ contract MetricOmmSimpleRouterNativeTest is SimpleRouterTestBase {
     _assertRouterEmpty();
   }
 
+  function test_mixedNativeAndWeth_exactInputSingle_wethForToken() public {
+    uint128 amountIn = 2_500;
+    uint256 nativePart = amountIn / 2;
+    uint256 wethPart = amountIn - nativePart;
+
+    uint256 token1Before = token1.balanceOf(recipient);
+    uint256 swapperEthBefore = swapper.balance;
+    uint256 swapperWethBefore = weth.balanceOf(swapper);
+
+    vm.prank(swapper);
+    router.exactInputSingle{value: nativePart}(
+      IMetricOmmSimpleRouter.ExactInputSingleParams({
+        pool: address(pool),
+        tokenIn: address(weth),
+        tokenOut: address(token1),
+        zeroForOne: true,
+        amountIn: amountIn,
+        amountOutMinimum: 0,
+        recipient: recipient,
+        deadline: _deadline(),
+        priceLimitX64: 0,
+        extensionData: ""
+      })
+    );
+
+    assertGt(token1.balanceOf(recipient) - token1Before, 0, "recipient token1");
+    assertEq(swapperEthBefore - swapper.balance, nativePart, "swapper native spent");
+    assertEq(swapperWethBefore - weth.balanceOf(swapper), wethPart, "swapper weth spent");
+    _assertRouterEmpty();
+  }
+
+  function test_mixedNativeAndWeth_exactOutputSingle_wethForToken() public {
+    uint128 amountOut = 1_500;
+    (uint256 quotedIn,) =
+      quoter.quoteHypotheticalExactOutputSingle(address(pool), true, amountOut, 0, uint128(Q64), uint128(Q64));
+    uint256 nativePart = quotedIn / 2;
+    uint256 wethPart = quotedIn - nativePart;
+
+    uint256 token1Before = token1.balanceOf(recipient);
+    uint256 swapperEthBefore = swapper.balance;
+    uint256 swapperWethBefore = weth.balanceOf(swapper);
+
+    vm.prank(swapper);
+    uint256 amountIn = router.exactOutputSingle{value: nativePart}(
+      IMetricOmmSimpleRouter.ExactOutputSingleParams({
+        pool: address(pool),
+        tokenIn: address(weth),
+        tokenOut: address(token1),
+        zeroForOne: true,
+        amountOut: amountOut,
+        amountInMaximum: uint128(quotedIn * 2 + 1),
+        recipient: recipient,
+        deadline: _deadline(),
+        priceLimitX64: 0,
+        extensionData: ""
+      })
+    );
+
+    assertEq(amountIn, quotedIn, "amountIn matches quote");
+    assertEq(token1.balanceOf(recipient) - token1Before, amountOut, "exact token1 out");
+    assertEq(swapperEthBefore - swapper.balance, nativePart, "swapper native spent");
+    assertEq(swapperWethBefore - weth.balanceOf(swapper), wethPart, "swapper weth spent");
+    _assertRouterEmpty();
+  }
+
   function test_multicall_ethInput_exactInputSingle_refundsUnusedEth() public {
     uint128 amountIn = 1_000;
     uint256 msgValue = 2 ether;

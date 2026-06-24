@@ -67,11 +67,20 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   /// @param recipient The entity that will receive payment.
   /// @param value The amount to pay.
   function pay(address token, address payer, address recipient, uint256 value) internal {
-    if (token == WETH && address(this).balance >= value) {
-      IWETH9(WETH).deposit{value: value}();
-      IERC20(WETH).safeTransfer(recipient, value);
-    } else if (payer == address(this)) {
+    if (payer == address(this)) {
       IERC20(token).safeTransfer(recipient, value);
+    } else if (token == WETH) {
+      uint256 nativeBalance = address(this).balance;
+      if (nativeBalance >= value) {
+        IWETH9(WETH).deposit{value: value}();
+        IERC20(WETH).safeTransfer(recipient, value);
+      } else if (nativeBalance > 0) {
+        IWETH9(WETH).deposit{value: nativeBalance}();
+        IERC20(WETH).safeTransfer(recipient, nativeBalance);
+        IERC20(WETH).safeTransferFrom(payer, recipient, value - nativeBalance);
+      } else {
+        IERC20(WETH).safeTransferFrom(payer, recipient, value);
+      }
     } else {
       IERC20(token).safeTransferFrom(payer, recipient, value);
     }
