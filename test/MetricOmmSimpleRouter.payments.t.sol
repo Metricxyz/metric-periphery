@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
+import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {PeripheryPayments} from "../contracts/base/PeripheryPayments.sol";
 import {MockWETH9} from "./mocks/MockWETH9.sol";
 import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
@@ -10,7 +11,12 @@ import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
 contract MetricOmmSimpleRouterPaymentsTest is SimpleRouterTestBase {
   function test_constructor_revertsOnZeroWeth() public {
     vm.expectRevert(PeripheryPayments.InvalidWETH.selector);
-    new MetricOmmSimpleRouter(address(0));
+    new MetricOmmSimpleRouter(address(0), address(factoryStub));
+  }
+
+  function test_constructor_revertsOnZeroFactory() public {
+    vm.expectRevert(IMetricOmmSimpleRouter.InvalidFactory.selector);
+    new MetricOmmSimpleRouter(address(weth), address(0));
   }
 
   function test_receive_acceptsWethWithdraw() public {

@@ -7,11 +7,7 @@ import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
-import {
-  MaliciousPoolForSimpleRouter,
-  ReentrantPoolForSimpleRouter,
-  WrongOutputPoolForSimpleRouter
-} from "./mocks/RouterPoolMocks.sol";
+import {MaliciousPoolForSimpleRouter} from "./mocks/RouterPoolMocks.sol";
 import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
 
 contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
@@ -720,19 +716,11 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     router.metricOmmSwapCallback(0, 0, "");
   }
 
-  function test_cannotDrainThirdPartyApprovals() public {
-    address victim = makeAddr("victim");
-    token1.mint(victim, 1_000_000e18);
-    vm.prank(victim);
-    token1.approve(address(router), type(uint256).max);
-
-    uint256 victimBefore = token1.balanceOf(victim);
-
+  function test_exactInputSingle_revertsInvalidPool() public {
     MaliciousPoolForSimpleRouter malicious = new MaliciousPoolForSimpleRouter(address(weth), address(token1), -1, 1000);
 
-    uint256 poolBefore = token1.balanceOf(address(malicious));
-
     vm.prank(swapper);
+    vm.expectRevert(abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, address(malicious)));
     router.exactInputSingle(
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(malicious),
@@ -747,31 +735,6 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         extensionData: ""
       })
     );
-
-    assertEq(token1.balanceOf(victim), victimBefore, "victim unchanged");
-    assertEq(token1.balanceOf(address(malicious)) - poolBefore, 1000, "pool received from swapper");
-  }
-
-  function test_reentrantPool_nestedCallbackAttempt() public {
-    ReentrantPoolForSimpleRouter reentrant = new ReentrantPoolForSimpleRouter(address(weth), address(token1), 1000, -1);
-
-    vm.prank(swapper);
-    router.exactInputSingle(
-      IMetricOmmSimpleRouter.ExactInputSingleParams({
-        pool: address(reentrant),
-        tokenIn: address(weth),
-        tokenOut: address(token1),
-        zeroForOne: true,
-        amountIn: 1000,
-        amountOutMinimum: 0,
-        recipient: recipient,
-        deadline: _deadline(),
-        priceLimitX64: 0,
-        extensionData: ""
-      })
-    );
-
-    assertTrue(reentrant.nestedAttempted(), "nested attempted");
   }
 
   function test_twoSequentialSwapsSameTx() public {
@@ -806,100 +769,6 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     );
     vm.stopPrank();
     _assertRouterEmpty();
-  }
-
-  function test_exactOutputSingle_revertsInvalidOutputAmount() public {
-    WrongOutputPoolForSimpleRouter wrongPool =
-      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 600, -400);
-
-    vm.prank(swapper);
-    vm.expectRevert(
-      abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidOutputAmount.selector, int128(400), uint128(500))
-    );
-    router.exactOutputSingle(
-      IMetricOmmSimpleRouter.ExactOutputSingleParams({
-        pool: address(wrongPool),
-        tokenIn: address(weth),
-        tokenOut: address(token1),
-        zeroForOne: true,
-        amountOut: 500,
-        amountInMaximum: 10_000,
-        recipient: recipient,
-        deadline: _deadline(),
-        priceLimitX64: 0,
-        extensionData: ""
-      })
-    );
-  }
-
-  function test_exactInput_revertsInvalidInputAmountAtHop() public {
-    WrongOutputPoolForSimpleRouter wrongPool =
-      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 400, -300);
-
-    address[] memory tokens = new address[](3);
-    tokens[0] = address(weth);
-    tokens[1] = address(token1);
-    tokens[2] = address(token2);
-
-    address[] memory pools = new address[](2);
-    pools[0] = address(wrongPool);
-    pools[1] = address(pool12);
-
-    bytes[] memory extensionDatas = new bytes[](2);
-
-    vm.prank(swapper);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IMetricOmmSimpleRouter.InvalidInputAmountAtHop.selector, uint8(0), int128(400), int256(2000)
-      )
-    );
-    router.exactInput(
-      IMetricOmmSimpleRouter.ExactInputParams({
-        tokens: tokens,
-        pools: pools,
-        extensionDatas: extensionDatas,
-        zeroForOneBitMap: 3,
-        amountIn: 2000,
-        amountOutMinimum: 0,
-        recipient: recipient,
-        deadline: _deadline()
-      })
-    );
-  }
-
-  function test_exactOutput_revertsInvalidOutputAmountAtHop() public {
-    WrongOutputPoolForSimpleRouter wrongPool =
-      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 500, -400);
-
-    address[] memory tokens = new address[](3);
-    tokens[0] = address(weth);
-    tokens[1] = address(token1);
-    tokens[2] = address(token2);
-
-    address[] memory pools = new address[](2);
-    pools[0] = address(wrongPool);
-    pools[1] = address(pool12);
-
-    bytes[] memory extensionDatas = new bytes[](2);
-
-    vm.prank(swapper);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IMetricOmmSimpleRouter.InvalidOutputAmountAtHop.selector, uint8(0), int128(400), int256(501)
-      )
-    );
-    router.exactOutput(
-      IMetricOmmSimpleRouter.ExactOutputParams({
-        tokens: tokens,
-        pools: pools,
-        extensionDatas: extensionDatas,
-        zeroForOneBitMap: 3,
-        amountOut: 500,
-        amountInMaximum: 10_000,
-        recipient: recipient,
-        deadline: _deadline()
-      })
-    );
   }
 
   // ============ Fuzz ============
