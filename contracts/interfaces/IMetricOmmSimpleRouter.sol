@@ -9,8 +9,8 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 /// @title IMetricOmmSimpleRouter
 /// @notice ERC-20 exact-input and exact-output swaps through one or more MetricOmm pools.
 /// @dev Scope: ERC-20 routes only. No native ETH, WETH wrap/unwrap, on-chain quotes, sweep, or refund helpers.
-///      Callers supply pool addresses at their own risk; implementations do not verify factory provenance,
-///      path token connectivity, or single-hop `tokenIn` / `tokenOut` against pool immutables.
+///      Only pools registered on the configured factory may be used. Path token connectivity and single-hop
+///      tokenIn / tokenOut against pool immutables remain the caller's obligation off-chain.
 ///      `pools[i]` is intended to connect `tokens[i]` and `tokens[i+1]`; `extensionDatas[i]` is passed to `pools[i]`.
 ///      Multihop exact-output executes `pools` from last to first; `amountOut` is `tokens[tokens.length - 1]`.
 ///      Multihop paths omit per-hop price limits; slippage is controlled solely by `amountOutMinimum` (exact input)
@@ -24,6 +24,11 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   error TransactionExpired(uint256 deadline, uint256 timestamp);
   /// @notice Swap callback caller is not the active pool in transient context.
   error InvalidCallbackCaller();
+  /// @notice Constructor received zero factory address.
+  error InvalidFactory();
+  /// @notice Pool is not registered on the configured factory.
+  /// @param pool Address that failed factory provenance validation.
+  error InvalidPool(address pool);
   /// @notice Returned swap deltas do not match expected sign/shape.
   error InvalidSwapDeltas();
   /// @notice Route arrays are inconsistent or too short for a multihop path.
@@ -63,7 +68,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
 
   /// @notice Single-hop exact-input swap parameters.
   /// @param pool MetricOmm pool address for this hop.
-  /// @param tokenIn ERC-20 the router pulls from the payer during the swap callback; caller must set correctly off-chain.
+  /// @param tokenIn ERC-20 the router pulls from the swap initiator during the swap callback; caller must set correctly off-chain.
   /// @param tokenOut Output token for this hop; informational for integrators, unused on-chain.
   /// @param zeroForOne `true` sells token0 for token1.
   /// @param amountIn Exact input amount.
@@ -110,7 +115,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
 
   /// @notice Single-hop exact-output swap parameters.
   /// @param pool MetricOmm pool address for this hop.
-  /// @param tokenIn ERC-20 the router pulls from the payer during the swap callback; caller must set correctly off-chain.
+  /// @param tokenIn ERC-20 the router pulls from the swap initiator during the swap callback; caller must set correctly off-chain.
   /// @param tokenOut Output token for this hop; informational for integrators, unused on-chain.
   /// @param zeroForOne `true` sells token0 for token1.
   /// @param amountOut Exact output amount.

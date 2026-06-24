@@ -111,7 +111,7 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
     oracle.setTokens(address(weth), address(token1));
     oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64));
 
-    router = new MetricOmmSimpleRouter(address(weth));
+    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub));
     quoter = new MetricOmmSwapQuoter();
     lpContract = new LiquidityHelper();
 

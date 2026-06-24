@@ -14,21 +14,16 @@ import {MetricOmmSwapResults} from "./libraries/MetricOmmSwapResults.sol";
 
 /// @title MetricOmmSimpleRouter
 /// @notice Exact-input and exact-output swaps through one or more MetricOmm pools.
-/// @dev Expected callback pool and swap mode are stored in transient storage; callback data carries hop context.
+/// @dev Expected callback pool, payer, token, and swap mode are stored in transient storage at entry.
 
 contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, SelfPermit, IMetricOmmSimpleRouter {
   /// @notice Transient callback mode is not supported by this router.
   /// @param callbackMode Unrecognized mode read from transient storage.
   error InvalidCallbackMode(uint8 callbackMode);
 
-  constructor(address weth) PeripheryPayments(weth) {}
+  constructor(address weth, address factory) MetricOmmSwapRouterBase(factory) PeripheryPayments(weth) {}
 
   // ============ Types ============
-
-  struct JustPayCallbackData {
-    address tokenToPay;
-    address payer;
-  }
 
   struct ExactOutputIterateCallbackData {
     address[] tokens;
@@ -36,7 +31,6 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     bytes[] extensionDatas;
     uint256 zeroForOneBitMap;
     uint256 amountInMax;
-    address payer;
   }
 
   // ============ External: callback ============
@@ -57,7 +51,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     uint8 callbackMode = _getCallbackMode();
 
     if (callbackMode == CALLBACK_MODE_JUST_PAY) {
-      _justPayCallback(amount0Delta, amount1Delta, data);
+      _justPayCallback(amount0Delta, amount1Delta);
       return;
     }
     if (callbackMode == CALLBACK_MODE_EXACT_OUTPUT_ITERATE) {
@@ -74,14 +68,14 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     _checkDeadline(params.deadline);
     MetricOmmSwapPath.validatePriceLimit(params.zeroForOne, params.priceLimitX64);
 
-    _setExpectedCallbackPool(params.pool, CALLBACK_MODE_JUST_PAY);
+    _setExpectedCallbackPool(params.pool, CALLBACK_MODE_JUST_PAY, msg.sender, params.tokenIn);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
       .swap(
         params.recipient,
         params.zeroForOne,
         MetricOmmSwapInputs.asAmountSpecifiedIn(params.amountIn),
         params.priceLimitX64,
-        abi.encode(JustPayCallbackData({tokenToPay: params.tokenIn, payer: msg.sender})),
+        "",
         params.extensionData
       );
     int128 out = MetricOmmSwapResults.extractAmountOut(params.zeroForOne, amount0Delta, amount1Delta);
@@ -106,14 +100,14 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
       address pool = params.pools[i];
       bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(params.zeroForOneBitMap, i);
 
-      _setExpectedCallbackPool(pool, CALLBACK_MODE_JUST_PAY, 0);
+      _setExpectedCallbackPool(pool, CALLBACK_MODE_JUST_PAY, 0, i == 0 ? msg.sender : address(this), params.tokens[i]);
       (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(pool)
         .swap(
           i == last ? params.recipient : address(this),
           zeroForOne,
           amount,
           MetricOmmSwapPath.openLimit(zeroForOne),
-          abi.encode(JustPayCallbackData({tokenToPay: params.tokens[i], payer: i == 0 ? msg.sender : address(this)})),
+          "",
           params.extensionDatas[i]
         );
 
@@ -138,16 +132,9 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     MetricOmmSwapPath.validatePriceLimit(params.zeroForOne, params.priceLimitX64);
 
     int128 expectedAmountOut = MetricOmmSwapInputs.asAmountSpecifiedIn(params.amountOut);
-    _setExpectedCallbackPool(params.pool, CALLBACK_MODE_JUST_PAY);
+    _setExpectedCallbackPool(params.pool, CALLBACK_MODE_JUST_PAY, msg.sender, params.tokenIn);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
-      .swap(
-        params.recipient,
-        params.zeroForOne,
-        -expectedAmountOut,
-        params.priceLimitX64,
-        abi.encode(JustPayCallbackData({tokenToPay: params.tokenIn, payer: msg.sender})),
-        params.extensionData
-      );
+      .swap(params.recipient, params.zeroForOne, -expectedAmountOut, params.priceLimitX64, "", params.extensionData);
     int128 amountOut = MetricOmmSwapResults.extractAmountOut(params.zeroForOne, amount0Delta, amount1Delta);
     if (amountOut != expectedAmountOut) revert InvalidOutputAmount(amountOut, params.amountOut);
 
@@ -172,7 +159,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     address pool = params.pools[hop];
     bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(params.zeroForOneBitMap, hop);
     int128 expectedAmountOut = MetricOmmSwapInputs.asAmountSpecifiedIn(params.amountOut);
-    _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop);
+    _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop, msg.sender, params.tokens[0]);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(pool)
       .swap(
         params.recipient,
@@ -185,7 +172,6 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
           pools: params.pools,
           extensionDatas: params.extensionDatas,
           zeroForOneBitMap: params.zeroForOneBitMap,
-          payer: msg.sender,
           amountInMax: params.amountInMaximum
         })
         ),
@@ -201,11 +187,10 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
 
   // ============ Internal: callback handlers ============
 
-  function _justPayCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) private {
-    JustPayCallbackData memory cb = abi.decode(data, (JustPayCallbackData));
+  function _justPayCallback(int256 amount0Delta, int256 amount1Delta) private {
     pay(
-      cb.tokenToPay,
-      cb.payer,
+      _getTokenToPay(),
+      _getPayer(),
       msg.sender,
       uint256(MetricOmmSwapResults.extractPositiveAmount(amount0Delta, amount1Delta))
     );
@@ -222,13 +207,13 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
       uint256 amountIn = uint256(amountToPay);
       if (amountIn > cb.amountInMax) revert InputTooHigh(amountIn, cb.amountInMax);
       _setExactOutputAmountIn(amountIn);
-      pay(cb.tokens[0], cb.payer, msg.sender, amountIn);
+      pay(_getTokenToPay(), _getPayer(), msg.sender, amountIn);
       return;
     }
     hop--;
     address pool = cb.pools[hop];
     bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(cb.zeroForOneBitMap, hop);
-    _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop);
+    _setExpectedCallbackPool(pool, CALLBACK_MODE_EXACT_OUTPUT_ITERATE, hop, _getPayer(), _getTokenToPay());
 
     (int128 amount0DeltaReturned, int128 amount1DeltaReturned) = IMetricOmmPoolActions(pool)
       .swap(

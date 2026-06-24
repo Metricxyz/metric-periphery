@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
+import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {IMetricOmmSimpleRouter} from "../interfaces/IMetricOmmSimpleRouter.sol";
 import {MetricOmmSwapPath} from "../libraries/MetricOmmSwapPath.sol";
 import {TransientCallbackPool} from "../libraries/TransientCallbackPool.sol";
@@ -14,14 +15,27 @@ abstract contract MetricOmmSwapRouterBase {
   uint8 internal constant CALLBACK_MODE_EXACT_OUTPUT_ITERATE = 1;
   uint256 internal constant MAX_PATH_POOLS = MetricOmmSwapPath.MAX_PATH_POOLS;
 
-  // ============ Internal: transient context ============
+  // ============ Immutables ============
 
-  function _setExpectedCallbackPool(address pool, uint8 callbackMode) internal {
-    TransientCallbackPool.set(pool, callbackMode);
+  IMetricOmmPoolFactory internal immutable FACTORY;
+
+  constructor(address factory) {
+    if (factory == address(0)) revert IMetricOmmSimpleRouter.InvalidFactory();
+    FACTORY = IMetricOmmPoolFactory(factory);
   }
 
-  function _setExpectedCallbackPool(address pool, uint8 callbackMode, uint8 hop) internal {
-    TransientCallbackPool.set(pool, callbackMode, hop);
+  // ============ Internal: transient context ============
+
+  function _setExpectedCallbackPool(address pool, uint8 callbackMode, address payer, address tokenToPay) internal {
+    _requireFactoryPool(pool);
+    TransientCallbackPool.set(pool, callbackMode, payer, tokenToPay);
+  }
+
+  function _setExpectedCallbackPool(address pool, uint8 callbackMode, uint8 hop, address payer, address tokenToPay)
+    internal
+  {
+    _requireFactoryPool(pool);
+    TransientCallbackPool.set(pool, callbackMode, hop, payer, tokenToPay);
   }
 
   function _expectedCallbackPool() internal view returns (address) {
@@ -44,12 +58,25 @@ abstract contract MetricOmmSwapRouterBase {
     return TransientCallbackPool.getAmountIn();
   }
 
+  function _getPayer() internal view returns (address payer) {
+    return TransientCallbackPool.getPayer();
+  }
+
+  function _getTokenToPay() internal view returns (address tokenToPay) {
+    return TransientCallbackPool.getTokenToPay();
+  }
+
   function _clearExpectedCallbackPool() internal {
     TransientCallbackPool.clear();
   }
 
   function _requireExpectedCallbackCaller(address caller) internal view {
     TransientCallbackPool.requireCaller(caller);
+    if (!FACTORY.isPool(caller)) revert IMetricOmmSimpleRouter.InvalidPool(caller);
+  }
+
+  function _requireFactoryPool(address pool) internal view {
+    if (!FACTORY.isPool(pool)) revert IMetricOmmSimpleRouter.InvalidPool(pool);
   }
 
   function _checkDeadline(uint256 deadline) internal view {
