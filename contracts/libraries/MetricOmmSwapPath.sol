@@ -6,7 +6,7 @@ import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmm
 /// @title MetricOmmSwapPath
 /// @notice Shared multihop path and swap parameter helpers for routers and quoters.
 library MetricOmmSwapPath {
-  /// @dev Hop index in transient storage is uint8;
+  /// @dev tradesLeft in transient storage is uint8;
   uint256 internal constant MAX_PATH_POOLS = uint256(type(uint8).max) + 1;
 
   /// @notice Price-limit sentinel is invalid for swap direction.

@@ -26,16 +26,25 @@ abstract contract MetricOmmSwapRouterBase {
 
   // ============ Internal: transient context ============
 
-  function _setExpectedCallbackPool(address pool, uint8 callbackMode, address payer, address tokenToPay) internal {
+  function _setNextCallbackContext(address pool, uint8 callbackMode, address payer, address tokenToPay) internal {
     _requireFactoryPool(pool);
     TransientCallbackPool.set(pool, callbackMode, payer, tokenToPay);
   }
 
-  function _setExpectedCallbackPool(address pool, uint8 callbackMode, uint8 hop, address payer, address tokenToPay)
-    internal
-  {
+  function _initCallbackContextforRecursiveOutput(
+    address pool,
+    uint8 callbackMode,
+    uint8 tradesLeft,
+    address payer,
+    address tokenToPay
+  ) internal {
     _requireFactoryPool(pool);
-    TransientCallbackPool.set(pool, callbackMode, hop, payer, tokenToPay);
+    TransientCallbackPool.set(pool, callbackMode, tradesLeft, payer, tokenToPay);
+  }
+
+  function _updateCallbackContextforRecursiveOutput(address pool, uint8 tradesLeft) internal {
+    _requireFactoryPool(pool);
+    TransientCallbackPool.update(pool, tradesLeft);
   }
 
   function _expectedCallbackPool() internal view returns (address) {
@@ -46,8 +55,8 @@ abstract contract MetricOmmSwapRouterBase {
     return TransientCallbackPool.getCallbackMode();
   }
 
-  function _getCallbackHop() internal view returns (uint8) {
-    return TransientCallbackPool.getHop();
+  function _getTradesLeft() internal view returns (uint8) {
+    return TransientCallbackPool.getTradesLeft();
   }
 
   function _setExactOutputAmountIn(uint256 amountIn) internal {

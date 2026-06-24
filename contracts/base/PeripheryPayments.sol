@@ -67,6 +67,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   /// @param recipient The entity that will receive payment.
   /// @param value The amount to pay.
   function pay(address token, address payer, address recipient, uint256 value) internal {
+    // If the payer is contract it means we are in the middle of a path. In the middle of a path we operate on ERC20 only.
     if (payer == address(this)) {
       IERC20(token).safeTransfer(recipient, value);
     } else if (token == WETH) {
