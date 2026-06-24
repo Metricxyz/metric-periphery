@@ -737,6 +737,88 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     );
   }
 
+  function test_exactOutputSingle_revertsInvalidPool() public {
+    MaliciousPoolForSimpleRouter malicious = new MaliciousPoolForSimpleRouter(address(weth), address(token1), 1000, -1);
+
+    vm.prank(swapper);
+    vm.expectRevert(abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, address(malicious)));
+    router.exactOutputSingle(
+      IMetricOmmSimpleRouter.ExactOutputSingleParams({
+        pool: address(malicious),
+        tokenIn: address(weth),
+        tokenOut: address(token1),
+        zeroForOne: true,
+        amountOut: 1000,
+        amountInMaximum: 10_000,
+        recipient: recipient,
+        deadline: _deadline(),
+        priceLimitX64: 0,
+        extensionData: ""
+      })
+    );
+  }
+
+  function test_exactInput_revertsInvalidPool() public {
+    MaliciousPoolForSimpleRouter malicious =
+      new MaliciousPoolForSimpleRouter(address(token1), address(token2), -1, 1000);
+
+    address[] memory tokens = new address[](3);
+    tokens[0] = address(weth);
+    tokens[1] = address(token1);
+    tokens[2] = address(token2);
+
+    address[] memory pools = new address[](2);
+    pools[0] = address(pool);
+    pools[1] = address(malicious);
+
+    bytes[] memory extensionDatas = new bytes[](2);
+
+    vm.prank(swapper);
+    vm.expectRevert(abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, address(malicious)));
+    router.exactInput(
+      IMetricOmmSimpleRouter.ExactInputParams({
+        tokens: tokens,
+        pools: pools,
+        extensionDatas: extensionDatas,
+        zeroForOneBitMap: 3,
+        amountIn: 2_000,
+        amountOutMinimum: 0,
+        recipient: recipient,
+        deadline: _deadline()
+      })
+    );
+  }
+
+  function test_exactOutput_revertsInvalidPool() public {
+    MaliciousPoolForSimpleRouter malicious = new MaliciousPoolForSimpleRouter(address(weth), address(token1), 1000, -1);
+
+    address[] memory tokens = new address[](3);
+    tokens[0] = address(weth);
+    tokens[1] = address(token1);
+    tokens[2] = address(token2);
+
+    address[] memory pools = new address[](2);
+    pools[0] = address(malicious);
+    pools[1] = address(pool12);
+
+    bytes[] memory extensionDatas = new bytes[](2);
+
+    vm.prank(swapper);
+    vm.expectRevert(abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, address(malicious)));
+    router.exactOutput(
+      IMetricOmmSimpleRouter.ExactOutputParams({
+        tokens: tokens,
+        pools: pools,
+        extensionDatas: extensionDatas,
+        zeroForOneBitMap: 3,
+        amountOut: 1_000,
+        amountInMaximum: 10_000,
+        recipient: recipient,
+        deadline: _deadline()
+      })
+    );
+  }
+
   function test_twoSequentialSwapsSameTx() public {
     vm.startPrank(swapper);
     router.exactInputSingle(

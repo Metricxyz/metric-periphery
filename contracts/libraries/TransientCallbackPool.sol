@@ -5,20 +5,28 @@ import {IMetricOmmSimpleRouter} from "../interfaces/IMetricOmmSimpleRouter.sol";
 
 /// @title TransientCallbackPool
 /// @notice EIP-1153 transient slot for swap callback context.
-/// @dev Layout: bits 0-159 pool, bits 160-167 callback mode, bits 168+ hop index.
+/// @dev Layout: bits 0-159 pool, bits 160-167 callback mode, bits 168+ tradesLeft (exact-output recursion only).
 library TransientCallbackPool {
   uint256 private constant T_SLOT = 0;
   uint256 private constant T_AMOUNT_IN_SLOT = 1;
   uint256 private constant T_PAYER_SLOT = 2;
   uint256 private constant T_TOKEN_TO_PAY_SLOT = 3;
   uint256 private constant CALLBACK_MODE_OFFSET = 160;
-  uint256 private constant HOP_OFFSET = 168;
+  uint256 private constant TRADES_LEFT_OFFSET = 168;
   uint256 private constant CALLBACK_MODE_MASK = 0xff;
 
-  function set(address pool, uint8 callbackMode, uint256 hop, address payer, address tokenToPay) internal {
+  function update(address pool, uint256 tradesLeft) internal {
+    uint256 callbackMode = getCallbackMode();
     uint256 value = uint256(uint160(pool));
     value |= (uint256(callbackMode) << CALLBACK_MODE_OFFSET);
-    value |= hop << HOP_OFFSET;
+    value |= tradesLeft << TRADES_LEFT_OFFSET;
+    _tstore(T_SLOT, value);
+  }
+
+  function set(address pool, uint8 callbackMode, uint256 tradesLeft, address payer, address tokenToPay) internal {
+    uint256 value = uint256(uint160(pool));
+    value |= (uint256(callbackMode) << CALLBACK_MODE_OFFSET);
+    value |= tradesLeft << TRADES_LEFT_OFFSET;
     _tstore(T_SLOT, value);
     _tstoreAddress(T_PAYER_SLOT, payer);
     _tstoreAddress(T_TOKEN_TO_PAY_SLOT, tokenToPay);
@@ -42,9 +50,9 @@ library TransientCallbackPool {
     callbackMode = uint8((_tload(T_SLOT) >> CALLBACK_MODE_OFFSET) & CALLBACK_MODE_MASK);
   }
 
-  function getHop() internal view returns (uint8 hop) {
+  function getTradesLeft() internal view returns (uint8 tradesLeft) {
     // forge-lint: disable-next-line(unsafe-typecast)
-    hop = uint8(_tload(T_SLOT) >> HOP_OFFSET);
+    tradesLeft = uint8(_tload(T_SLOT) >> TRADES_LEFT_OFFSET);
   }
 
   function setAmountIn(uint256 amountIn) internal {
