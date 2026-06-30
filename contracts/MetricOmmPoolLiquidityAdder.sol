@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.35;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
+import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {IMetricOmmPoolLiquidityAdder} from "./interfaces/IMetricOmmPoolLiquidityAdder.sol";
+import {IMulticall} from "./interfaces/IMulticall.sol";
 
 /// @title MetricOmmPoolLiquidityAdder
 /// @notice Routes `addLiquidity` for EOAs: the pool calls this contract in `metricOmmModifyLiquidityCallback`,
@@ -18,9 +19,7 @@ import {IMetricOmmPoolLiquidityAdder} from "./interfaces/IMetricOmmPoolLiquidity
 /// @dev The caller is responsible for supplying a legitimate pool address and other non-malicious parameters.
 ///      This contract does not verify the pool against the factory; a malicious pool can request token pulls up to
 ///      the caller-provided max caps during callback settlement.
-contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
-  using SafeERC20 for IERC20;
-
+contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryPayments {
   // ============ Constants ============
 
   uint256 internal constant WAD = 1e18;
@@ -35,7 +34,17 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
 
   // ============ Constructor ============
 
-  constructor() {}
+  constructor(address weth) PeripheryPayments(weth) {}
+
+  // ============ External: multicall ============
+
+  /// @inheritdoc IMulticall
+  function multicall(bytes[] calldata data) public payable override returns (bytes[] memory results) {
+    results = new bytes[](data.length);
+    for (uint256 i = 0; i < data.length; i++) {
+      results[i] = Address.functionDelegateCall(address(this), data[i]);
+    }
+  }
 
   // ============ External: liquidity ============
 
@@ -52,7 +61,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
     bytes calldata extensionData
-  ) external override returns (uint256 amount0Added, uint256 amount1Added) {
+  ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateOwner(owner);
     _validateDeltas(deltas);
     return _addLiquidity(pool, owner, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, extensionData);
@@ -66,7 +75,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
     bytes calldata extensionData
-  ) external override returns (uint256 amount0Added, uint256 amount1Added) {
+  ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateDeltas(deltas);
     return _addLiquidity(pool, msg.sender, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, extensionData);
   }
@@ -88,7 +97,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     int8 maximalCurBin,
     uint104 maximalPosition,
     bytes calldata extensionData
-  ) external override returns (uint256 amount0Added, uint256 amount1Added) {
+  ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateOwner(owner);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
@@ -122,7 +131,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     int8 maximalCurBin,
     uint104 maximalPosition,
     bytes calldata extensionData
-  ) external override returns (uint256 amount0Added, uint256 amount1Added) {
+  ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
     _validateBinAndBinPosition(pool, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
@@ -161,10 +170,10 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder {
     address token0 = imm.token0;
     address token1 = imm.token1;
     if (amount0Delta > 0) {
-      IERC20(token0).safeTransferFrom(payer, msg.sender, amount0Delta);
+      pay(token0, payer, msg.sender, amount0Delta);
     }
     if (amount1Delta > 0) {
-      IERC20(token1).safeTransferFrom(payer, msg.sender, amount1Delta);
+      pay(token1, payer, msg.sender, amount1Delta);
     }
     _clearPayContext();
   }
