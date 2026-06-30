@@ -5,15 +5,20 @@ import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {
   IMetricOmmModifyLiquidityCallback
 } from "@metric-core/interfaces/callbacks/IMetricOmmModifyLiquidityCallback.sol";
+import {IMulticall} from "./IMulticall.sol";
+import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 
 /// @title IMetricOmmPoolLiquidityAdder
 /// @notice Periphery contract for adding liquidity with caller-funded token settlement.
 /// @dev The position `owner` may differ from `msg.sender`, but token pulls in callback are always sourced from
 ///      `msg.sender` that initiated the add call.
+/// @dev Native ETH input uses the same multicall pattern as the swap router: send ETH with the add call (or
+///      `multicall{value}`) when the pool's WETH leg is token0 or token1; unused ETH can be reclaimed via
+///      `refundETH` in the same multicall.
 /// @dev The caller is responsible for supplying a legitimate pool address and other non-malicious parameters.
 ///      This contract does not verify the pool against the factory; a malicious pool can request token pulls up to
 ///      the caller-provided max caps during callback settlement.
-interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
+interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMulticall, IPeripheryPayments {
   // ============ Errors ============
 
   /// @notice Owner argument is zero address for owner-based add path.
@@ -87,7 +92,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
     bytes calldata extensionData
-  ) external returns (uint256 amount0Added, uint256 amount1Added);
+  ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity for caller-owned position with explicit shares and max token caps.
   /// @param pool Target pool address.
@@ -105,7 +110,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
     bytes calldata extensionData
-  ) external returns (uint256 amount0Added, uint256 amount1Added);
+  ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps.
   /// @dev Deposit composition follows the pool cursor at probe time. Use cursor bounds from slot0 to fail closed
@@ -136,7 +141,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     int8 maximalCurBin,
     uint104 maximalPosition,
     bytes calldata extensionData
-  ) external returns (uint256 amount0Added, uint256 amount1Added);
+  ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps for caller-owned position.
   /// @dev Deposit composition follows the pool cursor at probe time. Use cursor bounds from slot0 to fail closed
@@ -165,5 +170,5 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback {
     int8 maximalCurBin,
     uint104 maximalPosition,
     bytes calldata extensionData
-  ) external returns (uint256 amount0Added, uint256 amount1Added);
+  ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 }

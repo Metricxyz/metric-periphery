@@ -142,7 +142,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       address(this)
     );
 
-    helper = new MetricOmmPoolLiquidityAdder();
+    helper = new MetricOmmPoolLiquidityAdder(address(weth));
     stateView = new MetricOmmPoolStateView(address(factoryStub));
 
     vm.deal(alice, 100 ether);
