@@ -267,11 +267,11 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     returns (uint256 expectedBid, uint256 expectedAsk)
   {
     (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(oracle).getBidAndAskPrice();
-    uint256 midPriceX64 = Math.sqrt(uint256(bidFromOracleX64) * uint256(askFromOracleX64));
+    (uint256 midPriceX64, uint256 baseFeeX64) =
+      SwapMath.midAndSpreadFeeX64FromBidAsk(uint256(bidFromOracleX64), uint256(askFromOracleX64));
     (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
     (,, uint16 lengthE6, uint16 addFeeBuyE6, uint16 addFeeSellE6) = PoolStateLibrary._binState(pool, curBinIdx);
-    (uint24 protocolSpreadFeeE6, uint24 adminSpreadFeeE6, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) =
-      IMetricOmmPoolFactory(factory).poolFeeConfig(pool);
+    (,, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) = IMetricOmmPoolFactory(factory).poolFeeConfig(pool);
     uint256 notionalFeeE8 = uint256(protocolNotionalFeeE8) + uint256(adminNotionalFeeE8);
 
     uint256 lowerPriceX64 = _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6, midPriceX64, Math.Rounding.Floor);
@@ -279,11 +279,11 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     uint256 upperPriceX64 = _distanceE6ToPriceX64(int24(distUpperE6), midPriceX64, Math.Rounding.Floor);
     uint256 marginalPriceX64 =
       SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, curPosInBin, Math.Rounding.Floor);
-    uint256 buySpreadFeeE6 = uint256(protocolSpreadFeeE6) + uint256(adminSpreadFeeE6) + uint256(addFeeBuyE6);
-    uint256 sellSpreadFeeE6 = uint256(protocolSpreadFeeE6) + uint256(adminSpreadFeeE6) + uint256(addFeeSellE6);
+    uint256 buyFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeBuyE6), Q64, ONE_E6);
+    uint256 sellFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeSellE6), Q64, ONE_E6);
 
-    uint256 askBeforeNotional = Math.mulDiv(marginalPriceX64, ONE_E6 + buySpreadFeeE6, ONE_E6, Math.Rounding.Ceil);
-    uint256 bidAfterSpread = Math.mulDiv(marginalPriceX64, ONE_E6, ONE_E6 + sellSpreadFeeE6, Math.Rounding.Floor);
+    uint256 askBeforeNotional = Math.mulDiv(marginalPriceX64, Q64 + buyFeeX64, Q64, Math.Rounding.Ceil);
+    uint256 bidAfterSpread = Math.mulDiv(marginalPriceX64, Q64, Q64 + sellFeeX64, Math.Rounding.Floor);
     expectedAsk = Math.mulDiv(askBeforeNotional, ONE_E8, ONE_E8 - notionalFeeE8, Math.Rounding.Ceil);
     expectedBid = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor);
   }
