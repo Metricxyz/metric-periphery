@@ -100,7 +100,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
     oracle = new MockPriceProviderLPH();
     oracle.setTokens(address(weth), address(token1));
-    oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64));
+    oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64 + 1));
 
     (uint256[] memory nnPacked, uint256[] memory negPacked) = _binPackedArrays();
     (BinState[] memory nnStates, BinState[] memory negStates) = _unpackBinStates(nnPacked, negPacked);

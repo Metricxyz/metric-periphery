@@ -72,7 +72,7 @@ contract MetricOmmSimpleRouterNativeTest is SimpleRouterTestBase {
   function test_mixedNativeAndWeth_exactOutputSingle_wethForToken() public {
     uint128 amountOut = 1_500;
     (uint256 quotedIn,) =
-      quoter.quoteHypotheticalExactOutputSingle(address(pool), true, amountOut, 0, uint128(Q64), uint128(Q64));
+      quoter.quoteHypotheticalExactOutputSingle(address(pool), true, amountOut, 0, TEST_BID_X64, TEST_ASK_X64);
     uint256 nativePart = quotedIn / 2;
     uint256 wethPart = quotedIn - nativePart;
 

@@ -72,6 +72,8 @@ contract MockPriceProviderRouter is IPriceProvider {
 
 abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
   uint256 internal constant Q64 = 2 ** 64;
+  uint128 internal constant TEST_BID_X64 = uint128(Q64);
+  uint128 internal constant TEST_ASK_X64 = uint128(Q64 + 1);
   uint128 internal constant MAX_INT128_AS_UINT128 = uint128(type(int128).max);
 
   MetricOmmSimpleRouter internal router;
@@ -109,7 +111,7 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
 
     oracle = new MockPriceProviderRouter();
     oracle.setTokens(address(weth), address(token1));
-    oracle.setBidAndAskPrice(uint128(Q64), uint128(Q64));
+    oracle.setBidAndAskPrice(TEST_BID_X64, TEST_ASK_X64);
 
     router = new MetricOmmSimpleRouter(address(weth), address(factoryStub));
     quoter = new MetricOmmSwapQuoter();

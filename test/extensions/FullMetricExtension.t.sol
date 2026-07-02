@@ -33,7 +33,7 @@ contract FullMetricExtensionTest is MetricOmmPoolBaseTest {
     token1 = new MockERC20("Token1", "TK1", 18);
 
     priceProvider = new MockPriceProvider();
-    priceProvider.setBidAndAskPrice(SafeCast.toUint128(2 ** 64), SafeCast.toUint128(2 ** 64));
+    priceProvider.setBidAndAskPrice(SafeCast.toUint128(2 ** 64), SafeCast.toUint128(2 ** 64 + 1));
     oracle = priceProvider;
 
     depositExtension = new DepositAllowlistExtension(factory);
