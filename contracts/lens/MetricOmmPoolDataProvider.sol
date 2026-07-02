@@ -59,7 +59,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     PoolImmutables imm;
     uint256 token0ScaleMultiplier;
     uint256 token1ScaleMultiplier;
-    uint256 baseSpreadE6;
+    uint256 baseFeeX64;
     uint256 notionalFeeE8;
     uint128 oracleBidX64;
     uint128 oracleAskX64;
@@ -133,7 +133,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
 
     (depth.referenceBestBidX64, depth.referenceBestAskX64) = _marginalBestBidAsk(
       pool,
-      env.baseSpreadE6,
+      env.baseFeeX64,
       env.notionalFeeE8,
       env.oracleBidX64,
       env.oracleAskX64,
@@ -152,7 +152,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
       pool,
       env.token0ScaleMultiplier,
       midPriceX64,
-      env.baseSpreadE6,
+      env.baseFeeX64,
       env.notionalFeeE8,
       env.curBinIdx,
       env.curPosInBin,
@@ -169,7 +169,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
       pool,
       env.token1ScaleMultiplier,
       midPriceX64,
-      env.baseSpreadE6,
+      env.baseFeeX64,
       env.notionalFeeE8,
       env.curBinIdx,
       env.curPosInBin,
@@ -193,14 +193,13 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     env.imm = IMetricOmmPool(pool).getImmutables();
     env.token0ScaleMultiplier = env.imm.token0ScaleMultiplier;
     env.token1ScaleMultiplier = env.imm.token1ScaleMultiplier;
-    (uint24 protocolSpreadFeeE6, uint24 adminSpreadFeeE6, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) =
-      IMetricOmmPoolFactory(FACTORY).poolFeeConfig(pool);
+    (,, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) = IMetricOmmPoolFactory(FACTORY).poolFeeConfig(pool);
     env.notionalFeeE8 = uint256(protocolNotionalFeeE8) + uint256(adminNotionalFeeE8);
     if (env.notionalFeeE8 >= ONE_E8) revert InvalidNotionalFee();
-    env.baseSpreadE6 = uint256(protocolSpreadFeeE6) + uint256(adminSpreadFeeE6);
 
     address provider = _resolvePriceProvider(pool);
     (env.oracleBidX64, env.oracleAskX64) = IPriceProvider(provider).getBidAndAskPrice();
+    (, env.baseFeeX64) = SwapMath.midAndSpreadFeeX64FromBidAsk(uint256(env.oracleBidX64), uint256(env.oracleAskX64));
     (, env.curBinIdx, env.curPosInBin, env.curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
   }
 
@@ -267,7 +266,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
 
   function _marginalBestBidAsk(
     address pool,
-    uint256 baseSpreadE6,
+    uint256 baseFeeX64,
     uint256 notionalFeeE8,
     uint128 bidFromOracleX64,
     uint128 askFromOracleX64,
@@ -293,11 +292,11 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
         SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, uint256(curPosInBin), Math.Rounding.Floor);
     }
 
-    uint256 buySpreadFeeE6 = baseSpreadE6 + uint256(addFeeBuyE6);
-    uint256 sellSpreadFeeE6 = baseSpreadE6 + uint256(addFeeSellE6);
+    uint256 buyFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeBuyE6), Q64, ONE_E6);
+    uint256 sellFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeSellE6), Q64, ONE_E6);
 
-    uint256 askBeforeNotional = Math.mulDiv(marginalPriceX64, ONE_E6 + buySpreadFeeE6, ONE_E6, Math.Rounding.Ceil);
-    uint256 bidAfterSpread = Math.mulDiv(marginalPriceX64, ONE_E6, ONE_E6 + sellSpreadFeeE6, Math.Rounding.Floor);
+    uint256 askBeforeNotional = Math.mulDiv(marginalPriceX64, Q64 + buyFeeX64, Q64, Math.Rounding.Ceil);
+    uint256 bidAfterSpread = Math.mulDiv(marginalPriceX64, Q64, Q64 + sellFeeX64, Math.Rounding.Floor);
 
     bestAskX64 = Math.mulDiv(askBeforeNotional, ONE_E8, ONE_E8 - notionalFeeE8, Math.Rounding.Ceil).toUint128();
     bestBidX64 = Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor).toUint128();
@@ -305,26 +304,26 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
 
   // ============ Internal: fee-adjusted prices and depth accumulation ============
 
-  function _feeAdjustedAskX64(uint256 marginalX64, uint256 buySpreadE6, uint256 notionalFeeE8)
+  function _feeAdjustedAskX64(uint256 marginalX64, uint256 buyFeeX64, uint256 notionalFeeE8)
     internal
     pure
     returns (uint256)
   {
-    uint256 askBeforeNotional = Math.mulDiv(marginalX64, ONE_E6 + buySpreadE6, ONE_E6, Math.Rounding.Ceil);
+    uint256 askBeforeNotional = Math.mulDiv(marginalX64, Q64 + buyFeeX64, Q64, Math.Rounding.Ceil);
     return Math.mulDiv(askBeforeNotional, ONE_E8, ONE_E8 - notionalFeeE8, Math.Rounding.Ceil);
   }
 
-  function _feeAdjustedBidX64(uint256 marginalX64, uint256 sellSpreadE6, uint256 notionalFeeE8)
+  function _feeAdjustedBidX64(uint256 marginalX64, uint256 sellFeeX64, uint256 notionalFeeE8)
     internal
     pure
     returns (uint256)
   {
-    uint256 bidAfterSpread = Math.mulDiv(marginalX64, ONE_E6, ONE_E6 + sellSpreadE6, Math.Rounding.Floor);
+    uint256 bidAfterSpread = Math.mulDiv(marginalX64, Q64, Q64 + sellFeeX64, Math.Rounding.Floor);
     return Math.mulDiv(bidAfterSpread, ONE_E8 - notionalFeeE8, ONE_E8, Math.Rounding.Floor);
   }
 
   function _accumulateAskLevel(
-    uint256 buySpreadE6,
+    uint256 buyFeeX64,
     uint256 notionalFeeE8,
     uint256 amountExternal,
     uint256 mStartX64,
@@ -332,8 +331,8 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     uint256 cumAmt,
     uint256 cumWeighted
   ) internal pure returns (uint256 binAvgExecPriceX64, uint256 newCumAmt, uint256 newCumWeighted) {
-    uint256 execStart = _feeAdjustedAskX64(mStartX64, buySpreadE6, notionalFeeE8);
-    uint256 execEnd = _feeAdjustedAskX64(mEndX64, buySpreadE6, notionalFeeE8);
+    uint256 execStart = _feeAdjustedAskX64(mStartX64, buyFeeX64, notionalFeeE8);
+    uint256 execEnd = _feeAdjustedAskX64(mEndX64, buyFeeX64, notionalFeeE8);
     binAvgExecPriceX64 = (execStart + execEnd) >> 1;
 
     newCumAmt = cumAmt + amountExternal;
@@ -343,7 +342,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
   /// @dev `amountExternal` is token1 output for this bin slice. Execution price is token1 per token0 (Q64.64), so VWAP
   ///      weights each bin by implied token0 sold: Δx ≈ Δy·Q64/P, not by Δy (which skewed `Σ(P·Δy)/Σ(Δy)` vs `ΣΔy/ΣΔx`).
   function _accumulateBidLevel(
-    uint256 sellSpreadE6,
+    uint256 sellFeeX64,
     uint256 notionalFeeE8,
     uint256 amountExternal,
     uint256 mStartX64,
@@ -351,8 +350,8 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     uint256 cumToken1Out,
     uint256 cumToken0Sold
   ) internal pure returns (uint256 binAvgExecPriceX64, uint256 newCumToken1Out, uint256 newCumToken0Sold) {
-    uint256 execStart = _feeAdjustedBidX64(mStartX64, sellSpreadE6, notionalFeeE8);
-    uint256 execEnd = _feeAdjustedBidX64(mEndX64, sellSpreadE6, notionalFeeE8);
+    uint256 execStart = _feeAdjustedBidX64(mStartX64, sellFeeX64, notionalFeeE8);
+    uint256 execEnd = _feeAdjustedBidX64(mEndX64, sellFeeX64, notionalFeeE8);
     binAvgExecPriceX64 = (execStart + execEnd) >> 1;
     if (binAvgExecPriceX64 == 0) revert BidDepthBinAvgExecPriceZero();
 
@@ -367,7 +366,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     address pool,
     uint256 token0ScaleMultiplier,
     uint256 midPriceX64,
-    uint256 baseSpreadE6,
+    uint256 baseFeeX64,
     uint256 notionalFeeE8,
     int8 curBinIdx,
     uint104 curPosInBin,
@@ -379,7 +378,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     ctx.cumDistE6 = int256(curBinDistFromProvidedPriceE6);
     for (int256 b = int256(curBinIdx); b <= int256(highCap); b++) {
       _fillAskRow(
-        pool, token0ScaleMultiplier, midPriceX64, baseSpreadE6, notionalFeeE8, curBinIdx, curPosInBin, asks, ctx, b
+        pool, token0ScaleMultiplier, midPriceX64, baseFeeX64, notionalFeeE8, curBinIdx, curPosInBin, asks, ctx, b
       );
       unchecked {
         ++ctx.out;
@@ -391,7 +390,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     address pool,
     uint256 token0ScaleMultiplier,
     uint256 midPriceX64,
-    uint256 baseSpreadE6,
+    uint256 baseFeeX64,
     uint256 notionalFeeE8,
     int8 curBinIdx,
     uint104 curPosInBin,
@@ -402,7 +401,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     // forge-lint: disable-next-line(unsafe-typecast)
     int8 binIdx = int8(b);
     (uint104 t0,, uint16 lengthE6, uint16 addFeeBuyE6,) = PoolStateLibrary._binState(pool, binIdx);
-    uint256 buySpreadE6 = baseSpreadE6 + uint256(addFeeBuyE6);
+    uint256 buyFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeBuyE6), Q64, ONE_E6);
 
     uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, ctx.cumDistE6, Math.Rounding.Floor);
     // forge-lint: disable-next-line(unsafe-typecast)
@@ -427,7 +426,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
 
     uint256 binAvg;
     (binAvg, ctx.cumAmt, ctx.cumWeighted) =
-      _accumulateAskLevel(buySpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, ctx.cumAmt, ctx.cumWeighted);
+      _accumulateAskLevel(buyFeeX64, notionalFeeE8, amountExternal, mStartX64, mEndX64, ctx.cumAmt, ctx.cumWeighted);
 
     uint256 cumVwapX64 = ctx.cumAmt == 0 ? 0 : ctx.cumWeighted / ctx.cumAmt;
     asks[ctx.out] = DepthLevel({
@@ -446,7 +445,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
     address pool,
     uint256 token1ScaleMultiplier,
     uint256 midPriceX64,
-    uint256 baseSpreadE6,
+    uint256 baseFeeX64,
     uint256 notionalFeeE8,
     int8 curBinIdx,
     uint104 curPosInBin,
@@ -462,7 +461,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
 
     {
       (, uint104 t1, uint16 lengthE6,, uint16 addFeeSellE6) = PoolStateLibrary._binState(pool, curBinIdx);
-      uint256 sellSpreadE6 = baseSpreadE6 + uint256(addFeeSellE6);
+      uint256 sellFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeSellE6), Q64, ONE_E6);
 
       uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, walkDistE6, Math.Rounding.Floor);
       // forge-lint: disable-next-line(unsafe-typecast)
@@ -475,9 +474,8 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
       uint256 mEndX64 = lowerX64;
       uint256 amountExternal = _toExternal(amountScaled, token1ScaleMultiplier);
 
-      (uint256 binAvg, uint256 newCumToken1Out, uint256 newCumToken0Sold) = _accumulateBidLevel(
-        sellSpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumToken1Out, cumToken0Sold
-      );
+      (uint256 binAvg, uint256 newCumToken1Out, uint256 newCumToken0Sold) =
+        _accumulateBidLevel(sellFeeX64, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumToken1Out, cumToken0Sold);
 
       bids[out++] = DepthLevel({
         binIdx: curBinIdx,
@@ -500,7 +498,7 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
       walkDistE6 -= int256(uint256(lenAbove));
 
       (, uint104 t1, uint16 lengthE6,, uint16 addFeeSellE6) = PoolStateLibrary._binState(pool, binIdx);
-      uint256 sellSpreadE6 = baseSpreadE6 + uint256(addFeeSellE6);
+      uint256 sellFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeSellE6), Q64, ONE_E6);
 
       uint256 lowerX64 = _priceFromMidAndDistE6(midPriceX64, walkDistE6, Math.Rounding.Floor);
       // forge-lint: disable-next-line(unsafe-typecast)
@@ -512,9 +510,8 @@ contract MetricOmmPoolDataProvider is MetricOmmPoolStateView {
       uint256 mEndX64 = lowerX64;
       uint256 amountExternal = _toExternal(amountScaled, token1ScaleMultiplier);
 
-      (uint256 binAvg, uint256 newCumToken1Out, uint256 newCumToken0Sold) = _accumulateBidLevel(
-        sellSpreadE6, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumToken1Out, cumToken0Sold
-      );
+      (uint256 binAvg, uint256 newCumToken1Out, uint256 newCumToken0Sold) =
+        _accumulateBidLevel(sellFeeX64, notionalFeeE8, amountExternal, mStartX64, mEndX64, cumToken1Out, cumToken0Sold);
 
       bids[out++] = DepthLevel({
         binIdx: binIdx,
