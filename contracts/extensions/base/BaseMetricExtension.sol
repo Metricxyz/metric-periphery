@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
-import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 
@@ -18,7 +17,7 @@ abstract contract BaseMetricExtension is IMetricOmmExtensions {
   error ExtensionNotImplemented();
 
   modifier onlyPool() {
-    if (IMetricOmmPool(msg.sender).getImmutables().factory != FACTORY) {
+    if (!IMetricOmmPoolFactory(FACTORY).isPool(msg.sender)) {
       revert OnlyPool(msg.sender, FACTORY);
     }
     _;
