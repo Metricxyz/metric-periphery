@@ -12,12 +12,14 @@ library MetricOmmSwapPath {
   /// @notice Price-limit sentinel is invalid for swap direction.
   error InvalidPriceLimitForDirection(bool zeroForOne, uint128 priceLimitX64);
 
-  function validatePriceLimit(bool zeroForOne, uint128 priceLimitX64) internal pure {
+  /// @dev Maps the opposite-direction open sentinel to the canonical per-direction open limit.
+  function normalizePriceLimit(bool zeroForOne, uint128 priceLimitX64) internal pure returns (uint128) {
     if (zeroForOne) {
-      if (priceLimitX64 == type(uint128).max) revert InvalidPriceLimitForDirection(true, priceLimitX64);
-      return;
+      if (priceLimitX64 == type(uint128).max) return 0;
+      return priceLimitX64;
     }
-    if (priceLimitX64 == 0) revert InvalidPriceLimitForDirection(false, priceLimitX64);
+    if (priceLimitX64 == 0) return type(uint128).max;
+    return priceLimitX64;
   }
 
   function openLimit(bool zeroForOne) internal pure returns (uint128) {

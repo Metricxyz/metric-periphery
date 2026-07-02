@@ -30,7 +30,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 priceLimitX64,
     bytes memory extensionData
   ) public returns (uint256, uint256) {
-    MetricOmmSwapPath.validatePriceLimit(zeroForOne, priceLimitX64);
+    priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteLiveSwap(
       pool, recipient, zeroForOne, MetricOmmSwapInputs.asAmountSpecifiedIn(amountIn), priceLimitX64, extensionData
     );
@@ -54,7 +54,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 priceLimitX64,
     bytes memory extensionData
   ) public returns (uint256, uint256) {
-    MetricOmmSwapPath.validatePriceLimit(zeroForOne, priceLimitX64);
+    priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteLiveSwap(
       pool,
       recipient,
@@ -153,7 +153,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 askPriceX64,
     bytes memory extensionData
   ) public virtual returns (uint256, uint256) {
-    MetricOmmSwapPath.validatePriceLimit(zeroForOne, priceLimitX64);
+    priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
       pool,
       recipient,
@@ -192,7 +192,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 askPriceX64,
     bytes memory extensionData
   ) public virtual returns (uint256, uint256) {
-    MetricOmmSwapPath.validatePriceLimit(zeroForOne, priceLimitX64);
+    priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
       pool,
       recipient,
