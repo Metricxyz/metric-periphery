@@ -10,6 +10,7 @@ import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 /// @notice Gates `swap` by swapper address, per pool.
 contract SwapAllowlistExtension is BaseMetricExtension, ISwapAllowlistExtension {
   mapping(address pool => mapping(address swapper => bool)) public allowedSwapper;
+  mapping(address pool => bool) public allowAllSwappers;
 
   constructor(address factory_) BaseMetricExtension(factory_) {}
 
@@ -18,8 +19,13 @@ contract SwapAllowlistExtension is BaseMetricExtension, ISwapAllowlistExtension 
     emit AllowedToSwapSet(pool_, swapper, allowed);
   }
 
+  function setAllowAllSwappers(address pool_, bool allowed) external onlyPoolAdmin(pool_) {
+    allowAllSwappers[pool_] = allowed;
+    emit AllowAllSwappersSet(pool_, allowed);
+  }
+
   function isAllowedToSwap(address pool_, address swapper) external view returns (bool) {
-    return allowedSwapper[pool_][swapper];
+    return allowAllSwappers[pool_] || allowedSwapper[pool_][swapper];
   }
 
   function beforeSwap(address sender, address, bool, int128, uint128, uint256, uint128, uint128, bytes calldata)
@@ -28,7 +34,7 @@ contract SwapAllowlistExtension is BaseMetricExtension, ISwapAllowlistExtension 
     override
     returns (bytes4)
   {
-    if (!allowedSwapper[msg.sender][sender]) {
+    if (!allowAllSwappers[msg.sender] && !allowedSwapper[msg.sender][sender]) {
       revert IMetricOmmPoolActions.NotAllowedToSwap();
     }
     return IMetricOmmExtensions.beforeSwap.selector;

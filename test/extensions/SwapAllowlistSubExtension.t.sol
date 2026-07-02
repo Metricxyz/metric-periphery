@@ -50,4 +50,19 @@ contract SwapAllowlistExtensionTest is Test {
   function test_deniesByDefault() public view {
     assertFalse(extension.isAllowedToSwap(address(pool), swapper));
   }
+
+  function test_passesWhenAllowAllSwappers() public {
+    vm.prank(admin);
+    extension.setAllowAllSwappers(address(pool), true);
+    assertTrue(extension.isAllowedToSwap(address(pool), swapper));
+
+    vm.prank(address(pool));
+    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, "");
+  }
+
+  function test_onlyPoolAdminCanSetAllowAllSwappers() public {
+    vm.prank(swapper);
+    vm.expectRevert(abi.encodeWithSelector(BaseMetricExtension.OnlyPoolAdmin.selector, address(pool), swapper, admin));
+    extension.setAllowAllSwappers(address(pool), true);
+  }
 }

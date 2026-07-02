@@ -11,6 +11,7 @@ import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 /// @notice Gates `addLiquidity` by depositor address, per pool.
 contract DepositAllowlistExtension is BaseMetricExtension, IDepositAllowlistExtension {
   mapping(address pool => mapping(address depositor => bool)) public allowedDepositor;
+  mapping(address pool => bool) public allowAllDepositors;
 
   constructor(address factory_) BaseMetricExtension(factory_) {}
 
@@ -19,8 +20,13 @@ contract DepositAllowlistExtension is BaseMetricExtension, IDepositAllowlistExte
     emit AllowedToDepositSet(pool_, depositor, allowed);
   }
 
+  function setAllowAllDepositors(address pool_, bool allowed) external onlyPoolAdmin(pool_) {
+    allowAllDepositors[pool_] = allowed;
+    emit AllowAllDepositorsSet(pool_, allowed);
+  }
+
   function isAllowedToDeposit(address pool_, address depositor) external view returns (bool) {
-    return allowedDepositor[pool_][depositor];
+    return allowAllDepositors[pool_] || allowedDepositor[pool_][depositor];
   }
 
   function beforeAddLiquidity(address, address owner, uint80, LiquidityDelta calldata, bytes calldata)
@@ -29,7 +35,7 @@ contract DepositAllowlistExtension is BaseMetricExtension, IDepositAllowlistExte
     override
     returns (bytes4)
   {
-    if (!allowedDepositor[msg.sender][owner]) {
+    if (!allowAllDepositors[msg.sender] && !allowedDepositor[msg.sender][owner]) {
       revert IMetricOmmPoolActions.NotAllowedToDeposit();
     }
     return IMetricOmmExtensions.beforeAddLiquidity.selector;
