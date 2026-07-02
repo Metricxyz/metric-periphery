@@ -933,12 +933,9 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     }
   }
 
-  function test_exactInputSingle_revertsInvalidPriceLimitForDirection() public {
+  function test_exactInputSingle_normalizesOpenPriceLimitSentinel() public {
     vm.prank(swapper);
-    vm.expectRevert(
-      abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPriceLimitForDirection.selector, true, type(uint128).max)
-    );
-    router.exactInputSingle(
+    uint256 amountOut = router.exactInputSingle(
       IMetricOmmSimpleRouter.ExactInputSingleParams({
         pool: address(pool),
         tokenIn: address(weth),
@@ -952,5 +949,23 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
         extensionData: ""
       })
     );
+    assertGt(amountOut, 0);
+
+    vm.prank(swapper);
+    amountOut = router.exactInputSingle(
+      IMetricOmmSimpleRouter.ExactInputSingleParams({
+        pool: address(pool),
+        tokenIn: address(token1),
+        tokenOut: address(weth),
+        zeroForOne: false,
+        amountIn: 100,
+        amountOutMinimum: 0,
+        recipient: recipient,
+        deadline: _deadline(),
+        priceLimitX64: 0,
+        extensionData: ""
+      })
+    );
+    assertGt(amountOut, 0);
   }
 }

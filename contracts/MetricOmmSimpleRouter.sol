@@ -66,7 +66,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   /// @inheritdoc IMetricOmmSimpleRouter
   function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut) {
     _checkDeadline(params.deadline);
-    MetricOmmSwapPath.validatePriceLimit(params.zeroForOne, params.priceLimitX64);
+    uint128 priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(params.zeroForOne, params.priceLimitX64);
 
     _setNextCallbackContext(params.pool, CALLBACK_MODE_JUST_PAY, msg.sender, params.tokenIn);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
@@ -74,7 +74,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
         params.recipient,
         params.zeroForOne,
         MetricOmmSwapInputs.asAmountSpecifiedIn(params.amountIn),
-        params.priceLimitX64,
+        priceLimitX64,
         "",
         params.extensionData
       );
@@ -129,12 +129,12 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   /// @inheritdoc IMetricOmmSimpleRouter
   function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn) {
     _checkDeadline(params.deadline);
-    MetricOmmSwapPath.validatePriceLimit(params.zeroForOne, params.priceLimitX64);
+    uint128 priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(params.zeroForOne, params.priceLimitX64);
 
     int128 expectedAmountOut = MetricOmmSwapInputs.asAmountSpecifiedIn(params.amountOut);
     _setNextCallbackContext(params.pool, CALLBACK_MODE_JUST_PAY, msg.sender, params.tokenIn);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
-      .swap(params.recipient, params.zeroForOne, -expectedAmountOut, params.priceLimitX64, "", params.extensionData);
+      .swap(params.recipient, params.zeroForOne, -expectedAmountOut, priceLimitX64, "", params.extensionData);
     int128 amountOut = MetricOmmSwapResults.extractAmountOut(params.zeroForOne, amount0Delta, amount1Delta);
     if (amountOut != expectedAmountOut) revert InvalidOutputAmount(amountOut, params.amountOut);
 
