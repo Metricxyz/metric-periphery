@@ -11,17 +11,18 @@ import {IOracleValueStopLossExtension} from "../interfaces/extensions/IOracleVal
 import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 
 /// @title OracleValueStopLossExtension
-/// @notice Tracks per-bin value per share in token0 and token1 terms at the oracle mid,
+/// @notice Tracks per-bin value per share in token0 and token1 terms at bid/ask oracle marks,
 ///         against decaying high watermarks. Drawdown and decay changes are timelocked so LPs
 ///         can react; monitor at least as often as the timelock or trust the pool admin.
-/// @dev Value formulas (Q64.64 mid = token1 per token0), per-share in bin scaled units:
+/// @dev Value formulas (Q64.64 price = token1 per token0), per-share in bin scaled units:
 ///
-///      metricToken0 = t0*SCALE/shares + (t1 * 2^64 / mid) * SCALE / shares
-///      metricToken1 = (t0 * mid / 2^64) * SCALE / shares + t1*SCALE/shares
+///      metricToken0 = t0*SCALE/shares + (t1 * 2^64 / bid) * SCALE / shares
+///      metricToken1 = (t0 * ask / 2^64) * SCALE / shares + t1*SCALE/shares
 ///
-///      A pure mid move pushes the metrics in opposite directions; a value leak pushes both down.
-///        - metricToken0 breach (mid suspect-high) blocks zeroForOne == true  (token1 outflow)
-///        - metricToken1 breach (mid suspect-low)  blocks zeroForOne == false (token0 outflow)
+///      Bid/ask marks are more restrictive than mid: divide by bid, multiply by ask → higher watermarks.
+///      A pure price move pushes the metrics in opposite directions; a value leak pushes both down.
+///        - metricToken0 breach (ask suspect-high) blocks zeroForOne == true  (token1 outflow)
+///        - metricToken1 breach (bid suspect-low)  blocks zeroForOne == false (token0 outflow)
 ///        - both breached blocks both directions
 ///
 ///      Watermarks decay linearly at decayPerSecondE8 (lazy, per bin). Guarantee: value per
@@ -215,7 +216,6 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     PoolStopLossConfig memory cfg = oracleStopLossConfig[pool_];
     uint256 drawdown = cfg.drawdownE6;
     if (drawdown == 0) return;
-    uint256 midPriceX64 = (uint256(bidPriceX64) + uint256(askPriceX64)) / 2;
     uint256 minShares = IMetricOmmPool(pool_).getImmutables().minimalMintableLiquidity;
     if (minShares == 0) minShares = 1;
     PoolSlot0 memory s0 = Slot0Library.unpack(packedSlot0Initial);
@@ -237,22 +237,26 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
       uint256 totalShares = PoolStateLibrary._decodeBinTotalShares(shares[i]);
       if (totalShares == 0) continue;
       (uint104 t0, uint104 t1,,,) = PoolStateLibrary._decodeBinState(states[i]);
-      (uint256 metricT0, uint256 metricT1) = _metrics(t0, t1, totalShares, minShares, midPriceX64);
+      (uint256 metricT0, uint256 metricT1) = _metrics(t0, t1, totalShares, minShares, bidPriceX64, askPriceX64);
       _checkAndUpdateWatermarks(pool_, binIdxs[i], metricT0, metricT1, floorMultiplier, decayRate, zeroForOne);
     }
   }
 
   /// @dev Per-share metrics in bin scaled units; shares floored at minimalMintableLiquidity.
-  function _metrics(uint104 t0, uint104 t1, uint256 totalShares, uint256 minShares, uint256 midPriceX64)
-    private
-    pure
-    returns (uint256 metricT0, uint256 metricT1)
-  {
+  ///      Token0 metric divides by bid, token1 metric multiplies by ask — higher watermarks than mid.
+  function _metrics(
+    uint104 t0,
+    uint104 t1,
+    uint256 totalShares,
+    uint256 minShares,
+    uint128 bidPriceX64,
+    uint128 askPriceX64
+  ) private pure returns (uint256 valueInToken0PerShare, uint256 valueInToken1PerShare) {
     uint256 shares = totalShares < minShares ? minShares : totalShares;
     uint256 t0ps = Math.mulDiv(uint256(t0), METRIC_SCALE, shares);
     uint256 t1ps = Math.mulDiv(uint256(t1), METRIC_SCALE, shares);
-    metricT0 = _clampMetric(t0ps + Math.mulDiv(Math.mulDiv(uint256(t1), Q64, midPriceX64), METRIC_SCALE, shares));
-    metricT1 = _clampMetric(Math.mulDiv(Math.mulDiv(uint256(t0), midPriceX64, Q64), METRIC_SCALE, shares) + t1ps);
+    valueInToken0PerShare = _clampMetric(t0ps + Math.mulDiv(t1ps, Q64, bidPriceX64));
+    valueInToken1PerShare = _clampMetric(Math.mulDiv(uint256(t0ps), askPriceX64, Q64) + t1ps);
   }
 
   function _checkAndUpdateWatermarks(
