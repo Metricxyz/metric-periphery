@@ -7,30 +7,30 @@ interface IOracleValueStopLossExtension {
   struct BinHighWatermarks {
     uint104 token0;
     uint104 token1;
-    uint32 lastDecayTs;
+    uint40 lastDecayTs;
   }
 
   struct PoolStopLossConfig {
     uint32 drawdownE6;
     uint32 decayPerSecondE8;
-    uint32 timelock;
+    uint40 timelock;
     bool initialized;
   }
 
   struct PoolStopLossSchedule {
-    uint32 pendingTimelock;
-    uint32 pendingTimelockExecuteAfter;
+    uint40 pendingTimelock;
+    uint40 pendingTimelockExecuteAfter;
     uint32 pendingDrawdownE6;
-    uint32 pendingDrawdownExecuteAfter;
+    uint40 pendingDrawdownExecuteAfter;
     uint32 pendingDecayPerSecondE8;
-    uint32 pendingDecayExecuteAfter;
+    uint40 pendingDecayExecuteAfter;
   }
 
   struct PendingHighWatermarks {
     uint104 token0;
     uint104 token1;
     int8 binIdx;
-    uint32 executeAfter;
+    uint40 executeAfter;
   }
 
   error OracleStopLossTriggered(int8 binIdx, bool isToken0Metric, uint256 currentMetric, uint256 threshold);
@@ -65,7 +65,7 @@ interface IOracleValueStopLossExtension {
 
   function currentHighWatermarks(address pool, int8 binIdx) external view returns (uint256 hwm0, uint256 hwm1);
 
-  function proposeOracleStopLossTimelock(address pool, uint32 newTimelock) external;
+  function proposeOracleStopLossTimelock(address pool, uint40 newTimelock) external;
 
   function executeOracleStopLossTimelock(address pool) external;
 
