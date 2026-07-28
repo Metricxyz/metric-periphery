@@ -51,12 +51,12 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
   // ---- helpers ----
 
-  function _initPool(address pool, uint32 drawdownE6, uint32 decayE8, uint32 timelock) internal {
+  function _initPool(address pool, uint32 drawdownE6, uint32 decayE8, uint40 timelock) internal {
     vm.prank(address(factoryStub));
     extension.initialize(pool, abi.encode(drawdownE6, decayE8, timelock));
   }
 
-  function _proposeAndExecuteTimelock(uint32 timelock) internal {
+  function _proposeAndExecuteTimelock(uint40 timelock) internal {
     extension.proposeOracleStopLossTimelock(address(mockPool), timelock);
     extension.executeOracleStopLossTimelock(address(mockPool));
   }
@@ -188,8 +188,8 @@ contract OracleValueStopLossSubExtensionTest is Test {
     OracleValueStopLossExtension freshExtension = new OracleValueStopLossExtension(address(factoryStub));
     MockExtensionExtsloadPool freshPool = new MockExtensionExtsloadPool(address(factoryStub), MIN_SHARES);
     vm.prank(address(factoryStub));
-    freshExtension.initialize(address(freshPool), abi.encode(uint32(50_000), uint32(58), uint32(3 days)));
-    (uint32 dd, uint32 decay, uint32 tl, bool initialized) = freshExtension.oracleStopLossConfig(address(freshPool));
+    freshExtension.initialize(address(freshPool), abi.encode(uint32(50_000), uint32(58), uint40(3 days)));
+    (uint32 dd, uint32 decay, uint40 tl, bool initialized) = freshExtension.oracleStopLossConfig(address(freshPool));
     assertEq(dd, 50_000);
     assertEq(decay, 58);
     assertEq(tl, 3 days);
@@ -201,7 +201,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     vm.expectRevert(
       abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossAlreadyInitialized.selector, address(mockPool))
     );
-    extension.initialize(address(mockPool), abi.encode(uint32(0), uint32(0), uint32(0)));
+    extension.initialize(address(mockPool), abi.encode(uint32(0), uint32(0), uint40(0)));
   }
 
   function test_timelockUpdateDelayedByCurrentTimelock() public {
@@ -209,10 +209,10 @@ contract OracleValueStopLossSubExtensionTest is Test {
     MockExtensionExtsloadPool freshPool = new MockExtensionExtsloadPool(address(factoryStub), MIN_SHARES);
     factoryStub.setPoolAdmin(address(freshPool), admin);
     vm.prank(address(factoryStub));
-    freshExtension.initialize(address(freshPool), abi.encode(uint32(0), uint32(0), uint32(1 days)));
+    freshExtension.initialize(address(freshPool), abi.encode(uint32(0), uint32(0), uint40(1 days)));
 
     vm.startPrank(admin);
-    freshExtension.proposeOracleStopLossTimelock(address(freshPool), uint32(2 days));
+    freshExtension.proposeOracleStopLossTimelock(address(freshPool), uint40(2 days));
     vm.expectRevert(
       abi.encodeWithSelector(
         IOracleValueStopLossExtension.OracleStopLossTimelockNotElapsed.selector,
@@ -224,13 +224,13 @@ contract OracleValueStopLossSubExtensionTest is Test {
     vm.warp(block.timestamp + 1 days);
     freshExtension.executeOracleStopLossTimelock(address(freshPool));
     vm.stopPrank();
-    (,, uint32 tl,) = freshExtension.oracleStopLossConfig(address(freshPool));
+    (,, uint40 tl,) = freshExtension.oracleStopLossConfig(address(freshPool));
     assertEq(tl, 2 days);
   }
 
   function test_drawdownTimelockDelaysExecution() public {
     vm.startPrank(admin);
-    _proposeAndExecuteTimelock(uint32(1 days));
+    _proposeAndExecuteTimelock(uint40(1 days));
     extension.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
     vm.expectRevert(
       abi.encodeWithSelector(
@@ -256,7 +256,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
   function test_cancelPendingDrawdown() public {
     vm.startPrank(admin);
-    _proposeAndExecuteTimelock(uint32(1 days));
+    _proposeAndExecuteTimelock(uint40(1 days));
     extension.proposeOracleStopLossDrawdown(address(mockPool), 50_000);
     extension.cancelOracleStopLossDrawdown(address(mockPool));
     vm.expectRevert(
@@ -279,7 +279,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
   function test_watermarkTimelockDelaysExecution() public {
     vm.startPrank(admin);
-    _proposeAndExecuteTimelock(uint32(1 days));
+    _proposeAndExecuteTimelock(uint40(1 days));
     extension.proposeOracleStopLossHighWatermarks(address(mockPool), 0, 11, 22);
     vm.expectRevert(
       abi.encodeWithSelector(

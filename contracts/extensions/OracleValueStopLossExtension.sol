@@ -43,7 +43,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   constructor(address factory_) BaseMetricExtension(factory_) {}
 
   /// @notice Called once by the factory at pool creation.
-  ///         `data` = `abi.encode(uint32 drawdownE6, uint32 decayPerSecondE8, uint32 timelockSeconds)`.
+  ///         `data` = `abi.encode(uint32 drawdownE6, uint32 decayPerSecondE8, uint40 timelockSeconds)`.
   function initialize(address pool, bytes calldata data)
     external
     override(BaseMetricExtension, IOracleValueStopLossExtension)
@@ -54,7 +54,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
       revert OracleStopLossAlreadyInitialized(pool);
     }
 
-    (uint32 drawdownE6, uint32 decayPerSecondE8, uint32 timelock) = abi.decode(data, (uint32, uint32, uint32));
+    (uint32 drawdownE6, uint32 decayPerSecondE8, uint40 timelock) = abi.decode(data, (uint32, uint32, uint40));
     _validateDrawdown(drawdownE6);
     _validateDecay(decayPerSecondE8);
 
@@ -76,9 +76,9 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     return (_decayed(hwm.token0, rate, dt), _decayed(hwm.token1, rate, dt));
   }
 
-  function proposeOracleStopLossTimelock(address pool_, uint32 newTimelock) external onlyPoolAdmin(pool_) {
+  function proposeOracleStopLossTimelock(address pool_, uint40 newTimelock) external onlyPoolAdmin(pool_) {
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
-    uint32 executeAfter = _afterTimelock(pool_);
+    uint40 executeAfter = _afterTimelock(pool_);
     sched.pendingTimelock = newTimelock;
     sched.pendingTimelockExecuteAfter = executeAfter;
     emit OracleStopLossTimelockProposed(pool_, newTimelock, executeAfter);
@@ -88,7 +88,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
     if (sched.pendingTimelockExecuteAfter == 0) revert OracleStopLossNoPendingTimelock(pool_);
     _requireElapsed(sched.pendingTimelockExecuteAfter);
-    uint32 timelock = sched.pendingTimelock;
+    uint40 timelock = sched.pendingTimelock;
     oracleStopLossConfig[pool_].timelock = timelock;
     (sched.pendingTimelock, sched.pendingTimelockExecuteAfter) = (0, 0);
     emit OracleStopLossTimelockSet(pool_, timelock);
@@ -104,7 +104,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   function proposeOracleStopLossDrawdown(address pool_, uint256 newMaxDrawdownE6) external onlyPoolAdmin(pool_) {
     _validateDrawdown(newMaxDrawdownE6);
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
-    uint32 executeAfter = _afterTimelock(pool_);
+    uint40 executeAfter = _afterTimelock(pool_);
     sched.pendingDrawdownE6 = uint32(newMaxDrawdownE6);
     sched.pendingDrawdownExecuteAfter = executeAfter;
     emit OracleStopLossDrawdownProposed(pool_, newMaxDrawdownE6, executeAfter);
@@ -131,7 +131,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   function proposeOracleStopLossDecay(address pool_, uint256 newDecayPerSecondE8) external onlyPoolAdmin(pool_) {
     _validateDecay(newDecayPerSecondE8);
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
-    uint32 executeAfter = _afterTimelock(pool_);
+    uint40 executeAfter = _afterTimelock(pool_);
     sched.pendingDecayPerSecondE8 = uint32(newDecayPerSecondE8);
     sched.pendingDecayExecuteAfter = executeAfter;
     emit OracleStopLossDecayProposed(pool_, newDecayPerSecondE8, executeAfter);
@@ -160,7 +160,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     onlyPoolAdmin(pool_)
   {
     _requireInitialized(pool_);
-    uint32 executeAfter = _afterTimelock(pool_);
+    uint40 executeAfter = _afterTimelock(pool_);
     pendingHighWatermark[pool_] =
       PendingHighWatermarks({token0: newHwmToken0, token1: newHwmToken1, binIdx: binIdx, executeAfter: executeAfter});
     emit OracleStopLossHighWatermarkProposed(pool_, binIdx, newHwmToken0, newHwmToken1, executeAfter);
@@ -172,7 +172,8 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     if (pending.executeAfter == 0) revert OracleStopLossNoPendingHighWatermark(pool_);
     _requireElapsed(pending.executeAfter);
     highWatermarks[pool_][pending.binIdx] =
-      BinHighWatermarks({token0: pending.token0, token1: pending.token1, lastDecayTs: uint32(block.timestamp)});
+    // forge-lint: disable-next-line(unsafe-typecast)
+    BinHighWatermarks({token0: pending.token0, token1: pending.token1, lastDecayTs: uint40(block.timestamp)});
     delete pendingHighWatermark[pool_];
     emit OracleStopLossHighWatermarkUpdated(pool_, pending.binIdx, pending.token0, pending.token1);
   }
@@ -285,7 +286,8 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     hwmS.token0 = uint104(hwm0);
     // forge-lint: disable-next-line(unsafe-typecast)
     hwmS.token1 = uint104(hwm1);
-    hwmS.lastDecayTs = uint32(block.timestamp);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    hwmS.lastDecayTs = uint40(block.timestamp);
   }
 
   function _requireInitialized(address pool_) private view {
@@ -298,11 +300,12 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     return poolStopLossSchedule[pool_];
   }
 
-  function _afterTimelock(address pool_) private view returns (uint32) {
-    return uint32(block.timestamp + oracleStopLossConfig[pool_].timelock);
+  function _afterTimelock(address pool_) private view returns (uint40) {
+    // forge-lint: disable-next-line(unsafe-typecast)
+    return uint40(block.timestamp) + oracleStopLossConfig[pool_].timelock;
   }
 
-  function _requireElapsed(uint32 executeAfter) private view {
+  function _requireElapsed(uint40 executeAfter) private view {
     if (block.timestamp < executeAfter) revert OracleStopLossTimelockNotElapsed(executeAfter, block.timestamp);
   }
 
