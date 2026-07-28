@@ -35,6 +35,7 @@ contract DepositAllowlistExtension is BaseMetricExtension, IDepositAllowlistExte
     override
     returns (bytes4)
   {
+    // onlyPool omitted: state is keyed by msg.sender, so a non-pool caller cannot affect another pool.
     if (!allowAllDepositors[msg.sender] && !allowedDepositor[msg.sender][owner]) {
       revert IMetricOmmPoolActions.NotAllowedToDeposit();
     }

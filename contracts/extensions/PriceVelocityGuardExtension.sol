@@ -50,6 +50,7 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
     uint128 askPriceX64,
     bytes calldata
   ) external override returns (bytes4) {
+    // onlyPool omitted: state is keyed by msg.sender, so a non-pool caller cannot affect another pool.
     address pool_ = msg.sender;
     (uint256 midPriceX64,) = SwapMath.midAndSpreadFeeX64FromBidAsk(uint256(bidPriceX64), uint256(askPriceX64));
     // casting to `uint128` is safe: geometric mid of two uint128 bid/ask quotes fits uint128 (same bound as pool)

@@ -34,6 +34,7 @@ contract SwapAllowlistExtension is BaseMetricExtension, ISwapAllowlistExtension 
     override
     returns (bytes4)
   {
+    // onlyPool omitted: state is keyed by msg.sender, so a non-pool caller cannot affect another pool.
     if (!allowAllSwappers[msg.sender] && !allowedSwapper[msg.sender][sender]) {
       revert IMetricOmmPoolActions.NotAllowedToSwap();
     }
