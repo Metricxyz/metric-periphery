@@ -15,12 +15,14 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 /// @dev Native ETH input uses the same multicall pattern as the swap router: send ETH with the add call (or
 ///      `multicall{value}`) when the pool's WETH leg is token0 or token1; unused ETH can be reclaimed via
 ///      `refundETH` in the same multicall.
-/// @dev The caller is responsible for supplying a legitimate pool address and other non-malicious parameters.
-///      This contract does not verify the pool against the factory; a malicious pool can request token pulls up to
-///      the caller-provided max caps during callback settlement.
+/// @dev Only factory-registered pools are accepted; amount caps still bound how much may be pulled for that pool.
 interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMulticall, IPeripheryPayments {
   // ============ Errors ============
 
+  /// @notice Factory constructor argument was zero.
+  error InvalidFactory();
+  /// @notice Pool is not registered with the configured factory.
+  error InvalidPool(address pool);
   /// @notice Owner argument is zero address for owner-based add path.
   error InvalidPositionOwner();
   /// @notice `LiquidityDelta` arrays have different lengths.

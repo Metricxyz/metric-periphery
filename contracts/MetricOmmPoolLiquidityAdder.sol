@@ -5,6 +5,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IMetricOmmPool, PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
+import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {PeripheryPayments} from "./base/PeripheryPayments.sol";
@@ -16,9 +17,7 @@ import {IMulticall} from "./interfaces/IMulticall.sol";
 ///         which pulls tokens from the user who must have approved this adder beforehand.
 /// @dev Layout follows metric-core conventions:
 ///      constants/state, constructor, external mutators, then internal helpers.
-/// @dev The caller is responsible for supplying a legitimate pool address and other non-malicious parameters.
-///      This contract does not verify the pool against the factory; a malicious pool can request token pulls up to
-///      the caller-provided max caps during callback settlement.
+/// @dev Only factory-registered pools are accepted. Amount caps bound how much may be pulled for that pool.
 contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryPayments {
   // ============ Constants ============
 
@@ -32,9 +31,16 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
   uint256 private constant T_SLOT_PAY_MAX0 = 2;
   uint256 private constant T_SLOT_PAY_MAX1 = 3;
 
+  // ============ Immutables ============
+
+  IMetricOmmPoolFactory internal immutable FACTORY;
+
   // ============ Constructor ============
 
-  constructor(address weth) PeripheryPayments(weth) {}
+  constructor(address factory, address weth) PeripheryPayments(weth) {
+    if (factory == address(0)) revert InvalidFactory();
+    FACTORY = IMetricOmmPoolFactory(factory);
+  }
 
   // ============ External: multicall ============
 
@@ -98,6 +104,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     uint104 maximalPosition,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
+    _requireFactoryPool(pool);
     _validateOwner(owner);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
@@ -132,6 +139,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     uint104 maximalPosition,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
+    _requireFactoryPool(pool);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
     _validateBinAndBinPosition(pool, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
@@ -243,6 +251,10 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
   }
 
   // ============ Internal: validation ============
+
+  function _requireFactoryPool(address pool) internal view {
+    if (!FACTORY.isPool(pool)) revert InvalidPool(pool);
+  }
 
   function _validateOwner(address owner) internal pure {
     if (owner == address(0)) revert InvalidPositionOwner();
