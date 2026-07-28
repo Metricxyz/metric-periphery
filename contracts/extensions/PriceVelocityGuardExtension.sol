@@ -16,6 +16,11 @@ import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 ///      Comparison is performed on squares to avoid an on-chain sqrt:
 ///        changeE18^2 <= maxChangePerBlockE18^2 * (1 + blockDiff)
 ///      where 1e18 = 100% (full unit).
+///
+///      Per-block budget: `anchorMidPriceX64` is the check reference and stays fixed for every swap in
+///      the current block. `lastObservedMidPriceX64` tracks the latest swap mid and only becomes
+///      the new anchor when the block changes — so the first swap cannot widen the ceiling for
+///      later swaps in the same block.
 contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuardExtension {
   mapping(address pool => PriceVelocityState) public priceVelocityState;
 
@@ -26,11 +31,12 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
     emit MaxChangePerBlockSet(pool_, newMaxPctChangePerBlockE18);
   }
 
-  function setLastMidPrice(address pool_, uint128 newLastMidPriceX64) external onlyPoolAdmin(pool_) {
+  function setAnchorMidPrice(address pool_, uint128 newAnchorMidPriceX64) external onlyPoolAdmin(pool_) {
     PriceVelocityState storage s = priceVelocityState[pool_];
-    s.lastMidPriceX64 = newLastMidPriceX64;
-    s.lastUpdateBlock = uint64(block.number);
-    emit LastMidPriceUpdated(pool_, newLastMidPriceX64);
+    s.anchorMidPriceX64 = newAnchorMidPriceX64;
+    s.lastObservedMidPriceX64 = newAnchorMidPriceX64;
+    s.lastInteractionBlock = uint64(block.number);
+    emit AnchorMidPriceUpdated(pool_, newAnchorMidPriceX64);
   }
 
   function beforeSwap(
@@ -51,29 +57,39 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
     uint128 midPrice = uint128(midPriceX64);
 
     PriceVelocityState storage s = priceVelocityState[pool_];
-    uint128 prevMid = s.lastMidPriceX64;
-    uint64 prevBlock = s.lastUpdateBlock;
+    uint128 anchorMid = s.anchorMidPriceX64;
+    uint64 prevBlock = s.lastInteractionBlock;
 
-    s.lastMidPriceX64 = midPrice;
-    s.lastUpdateBlock = uint64(block.number);
+    if (anchorMid == 0) {
+      s.anchorMidPriceX64 = midPrice;
+      s.lastObservedMidPriceX64 = midPrice;
+      s.lastInteractionBlock = uint64(block.number);
+      return IMetricOmmExtensions.beforeSwap.selector;
+    }
 
-    if (prevMid != 0) {
-      uint64 maxChange = s.maxChangePerBlockE18;
-      if (maxChange != 0) {
-        uint256 blockDiff = block.number - prevBlock;
+    uint256 blockDiff;
+    if (block.number != prevBlock) {
+      // New block: anchor to the previous block's last mid, not this swap's mid.
+      anchorMid = s.lastObservedMidPriceX64;
+      blockDiff = block.number - prevBlock;
+      s.anchorMidPriceX64 = anchorMid;
+      s.lastInteractionBlock = uint64(block.number);
+    } else {
+      blockDiff = 0;
+    }
 
-        uint256 delta = midPrice > prevMid ? uint256(midPrice - prevMid) : uint256(prevMid - midPrice);
-
-        uint256 changeE18 = (delta * 1e18) / uint256(prevMid);
-
-        uint256 actualSq = changeE18 * changeE18;
-        uint256 allowedSq = uint256(maxChange) * uint256(maxChange) * (1 + blockDiff);
-
-        if (actualSq > allowedSq) {
-          revert PriceVelocityExceeded(actualSq, allowedSq);
-        }
+    uint64 maxChange = s.maxChangePerBlockE18;
+    if (maxChange != 0) {
+      uint256 delta = midPrice > anchorMid ? uint256(midPrice - anchorMid) : uint256(anchorMid - midPrice);
+      uint256 changeE18 = (delta * 1e18) / uint256(anchorMid);
+      uint256 actualSq = changeE18 * changeE18;
+      uint256 allowedSq = uint256(maxChange) * uint256(maxChange) * (1 + blockDiff);
+      if (actualSq > allowedSq) {
+        revert PriceVelocityExceeded(actualSq, allowedSq);
       }
     }
+
+    s.lastObservedMidPriceX64 = midPrice;
 
     return IMetricOmmExtensions.beforeSwap.selector;
   }
