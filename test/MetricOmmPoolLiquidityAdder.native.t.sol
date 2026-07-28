@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 import {MetricOmmPoolLiquidityAdder} from "../contracts/MetricOmmPoolLiquidityAdder.sol";
+import {IMetricOmmPoolLiquidityAdder} from "../contracts/interfaces/IMetricOmmPoolLiquidityAdder.sol";
 import {PeripheryPayments} from "../contracts/base/PeripheryPayments.sol";
 import {MetricOmmPoolLiquidityAdderTest} from "./MetricOmmPoolLiquidityAdder.t.sol";
 
@@ -25,7 +26,12 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
 
   function test_constructor_revertsOnZeroWeth() public {
     vm.expectRevert(PeripheryPayments.InvalidWETH.selector);
-    new MetricOmmPoolLiquidityAdder(address(0));
+    new MetricOmmPoolLiquidityAdder(address(factoryStub), address(0));
+  }
+
+  function test_constructor_revertsOnZeroFactory() public {
+    vm.expectRevert(IMetricOmmPoolLiquidityAdder.InvalidFactory.selector);
+    new MetricOmmPoolLiquidityAdder(address(0), address(weth));
   }
 
   function test_receive_acceptsWethWithdraw() public {
