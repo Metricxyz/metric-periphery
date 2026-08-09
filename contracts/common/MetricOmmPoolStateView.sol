@@ -4,15 +4,12 @@ pragma solidity ^0.8.35;
 import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolFactory} from "@metric-core/interfaces/IMetricOmmPoolFactory/IMetricOmmPoolFactory.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title MetricOmmPoolStateView
 /// @notice Off-chain friendly view helpers reading v1 pool storage via EXTSLOAD.
 /// @dev Deploy one instance per factory (`constructor(factory)`). Returns raw slot and bin values as stored.
 ///      Factory metadata (admin, fees, pending price provider) should be read from `IMetricOmmPoolFactory` directly.
 contract MetricOmmPoolStateView {
-  using SafeCast for uint256;
-
   address internal immutable FACTORY;
 
   constructor(address factory) {
@@ -82,11 +79,11 @@ contract MetricOmmPoolStateView {
     return PoolStateLibrary._multipleBinTotalShares(pool, binIdxs);
   }
 
-  function positionBinShares(address pool, address owner, uint80 salt, int8 bin) external view returns (uint104) {
-    return PoolStateLibrary._positionBinShares(pool, owner, salt, bin).toUint104();
+  function positionBinShares(address pool, address owner, uint80 salt, int8 bin) external view returns (uint256) {
+    return PoolStateLibrary._positionBinShares(pool, owner, salt, bin);
   }
 
-  function positionBinShares(address pool, bytes32 positionBinKey) external view returns (uint104) {
-    return PoolStateLibrary._positionBinShares(pool, positionBinKey).toUint104();
+  function positionBinShares(address pool, bytes32 positionBinKey) external view returns (uint256) {
+    return PoolStateLibrary._positionBinShares(pool, positionBinKey);
   }
 }
