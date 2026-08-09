@@ -144,8 +144,6 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
 
     deployed = new MetricOmmPool(
       address(factoryStub),
-      address(this),
-      makeAddr("adminFeeDest"),
       token0Addr,
       token1Addr,
       address(oracle),
