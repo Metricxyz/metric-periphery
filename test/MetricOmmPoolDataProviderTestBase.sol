@@ -130,6 +130,39 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
   /// @dev Forge `assertApproxEqRel` uses `1e18 = 100%`, so `0.001% = 1e-5 * 1e18 = 1e13`.
   uint256 internal constant MAX_REL_ERR_0_001_BPS = 1e11;
 
+  function _newPool(
+    address factory,
+    address token0Addr,
+    address token1Addr,
+    address oracleAddr,
+    BinState[] memory nnStates,
+    BinState[] memory negStates,
+    uint256 token0ScaleMultiplier,
+    uint256 token1ScaleMultiplier
+  ) internal returns (MetricOmmPool) {
+    PoolExtensions memory extensions;
+    ExtensionOrders memory extensionOrders;
+    return new MetricOmmPool(
+      factory,
+      token0Addr,
+      token1Addr,
+      oracleAddr,
+      extensions,
+      extensionOrders,
+      true,
+      token0ScaleMultiplier,
+      token1ScaleMultiplier,
+      INITIAL_TOKEN_0_DENSITY,
+      INITIAL_TOKEN_1_DENSITY,
+      MINIMAL_MINTABLE_LIQUIDITY,
+      PROTOCOL_SPREAD + ADMIN_SPREAD,
+      0,
+      nnStates,
+      negStates,
+      PROTOCOL_NOTIONAL + ADMIN_NOTIONAL
+    );
+  }
+
   function _deployCase(
     uint8 token0Decimals,
     uint8 token1Decimals,
@@ -165,29 +198,15 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     (uint256 token0ScaleMultiplier, uint256 token1ScaleMultiplier) =
       _getScaleMultipliers(address(token0), address(token1));
 
-    PoolExtensions memory extensions;
-    ExtensionOrders memory extensionOrders;
-
-    pool = new MetricOmmPool(
+    pool = _newPool(
       address(factoryStub),
-      address(this),
-      makeAddr("adminFeeDest"),
       address(token0),
       address(token1),
       address(oracle),
-      extensions,
-      extensionOrders,
-      true,
-      token0ScaleMultiplier,
-      token1ScaleMultiplier,
-      INITIAL_TOKEN_0_DENSITY,
-      INITIAL_TOKEN_1_DENSITY,
-      MINIMAL_MINTABLE_LIQUIDITY,
-      PROTOCOL_SPREAD + ADMIN_SPREAD,
-      0,
       nnStates,
       negStates,
-      PROTOCOL_NOTIONAL + ADMIN_NOTIONAL
+      token0ScaleMultiplier,
+      token1ScaleMultiplier
     );
 
     factoryStub.registerPool(
