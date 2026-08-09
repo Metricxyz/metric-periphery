@@ -8,7 +8,9 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 
 /// @title IMetricOmmSimpleRouter
 /// @notice ERC-20 exact-input and exact-output swaps through one or more MetricOmm pools.
-/// @dev Scope: ERC-20 routes only. No native ETH, WETH wrap/unwrap, on-chain quotes, sweep, or refund helpers.
+/// @dev Scope: supports native ETH (auto-wrapped to WETH in payment) and pre-wrapped WETH/ERC-20 as swap
+///      input/output. `unwrapWETH9`, `sweepToken`, and `refundETH` are available via IPeripheryPayments.
+///      On-chain quotes are not part of this interface.
 ///      Only pools registered on the configured factory may be used. Path token connectivity and single-hop
 ///      tokenIn / tokenOut against pool immutables remain the caller's obligation off-chain.
 ///      `pools[i]` is intended to connect `tokens[i]` and `tokens[i+1]`; `extensionDatas[i]` is passed to `pools[i]`.
