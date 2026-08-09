@@ -17,6 +17,17 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 ///      `refundETH` in the same multicall.
 /// @dev Only factory-registered pools are accepted; amount caps still bound how much may be pulled for that pool.
 interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMulticall, IPeripheryPayments {
+  // ============ Types ============
+
+  /// @notice Allowed slot0 bin-position range for an add. Use type(int8).min / type(int8).max and type(uint104).max
+  ///         to leave a side unconstrained.
+  struct BinPositionBounds {
+    int8 minimalCurBin;
+    uint104 minimalPosition;
+    int8 maximalCurBin;
+    uint104 maximalPosition;
+  }
+
   // ============ Errors ============
 
   /// @notice Factory constructor argument was zero.
@@ -58,14 +69,14 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
   /// @param maxAmount0 Caller cap for token0.
   /// @param maxAmount1 Caller cap for token1.
   error MaxAmountExceeded(uint256 amount0Due, uint256 amount1Due, uint256 maxAmount0, uint256 maxAmount1);
-  /// @notice Pool cursor from slot0 outside caller bounds at probe time.
+  /// @notice Pool bin position from slot0 outside caller bounds.
   /// @param curBinIdx Current bin index read from slot0.
   /// @param curPosInBin Current position in bin read from slot0.
   /// @param minimalCurBin Caller lower bound on curBinIdx.
   /// @param minimalPosition Minimum curPosInBin when curBinIdx equals minimalCurBin.
   /// @param maximalCurBin Caller upper bound on curBinIdx.
   /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin.
-  error CursorOutOfBounds(
+  error BinPositionOutOfBounds(
     int8 curBinIdx,
     uint104 curPosInBin,
     int8 minimalCurBin,
@@ -83,6 +94,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
   /// @param deltas Shares per bin.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param binPositionBounds Allowed slot0 bin-position range; use unconstrained bounds to skip.
   /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
@@ -93,6 +105,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 
@@ -102,6 +115,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
   /// @param deltas Shares per bin.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
+  /// @param binPositionBounds Allowed slot0 bin-position range; use unconstrained bounds to skip.
   /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
@@ -111,11 +125,12 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps.
-  /// @dev Deposit composition follows the pool cursor at probe time. Use cursor bounds from slot0 to fail closed
+  /// @dev Deposit composition follows the current bin position at probe time. Use bin-position bounds from slot0 to fail closed
   ///      when the pool state has been moved away from the price the caller signed for.
   /// @param pool Target pool address.
   /// @param owner Position owner recorded in pool storage.
@@ -123,11 +138,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
   /// @param weightDeltas Weight vector used for probe then scaled to integer shares.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
-  /// @param minimalCurBin Minimum allowed curBinIdx from slot0; use type(int8).min to disable lower bin bound.
-  /// @param minimalPosition Minimum curPosInBin when curBinIdx equals minimalCurBin.
-  /// @param maximalCurBin Maximum allowed curBinIdx from slot0; use type(int8).max to disable upper bin bound.
-  /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin; use type(uint104).max when
-  ///        unconstrained at maximalCurBin.
+  /// @param binPositionBounds Allowed slot0 bin-position range.
   /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
@@ -138,26 +149,19 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
-    int8 minimalCurBin,
-    uint104 minimalPosition,
-    int8 maximalCurBin,
-    uint104 maximalPosition,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 
   /// @notice Add liquidity from weight vector by probing and scaling to fit max caps for caller-owned position.
-  /// @dev Deposit composition follows the pool cursor at probe time. Use cursor bounds from slot0 to fail closed
+  /// @dev Deposit composition follows the current bin position at probe time. Use bin-position bounds from slot0 to fail closed
   ///      when the pool state has been moved away from the price the caller signed for.
   /// @param pool Target pool address.
   /// @param salt Position salt in caller key-space.
   /// @param weightDeltas Weight vector used for probe then scaled to integer shares.
   /// @param maxAmountToken0 Max token0 allowed to be pulled from caller.
   /// @param maxAmountToken1 Max token1 allowed to be pulled from caller.
-  /// @param minimalCurBin Minimum allowed curBinIdx from slot0; use type(int8).min to disable lower bin bound.
-  /// @param minimalPosition Minimum curPosInBin when curBinIdx equals minimalCurBin.
-  /// @param maximalCurBin Maximum allowed curBinIdx from slot0; use type(int8).max to disable upper bin bound.
-  /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin; use type(uint104).max when
-  ///        unconstrained at maximalCurBin.
+  /// @param binPositionBounds Allowed slot0 bin-position range.
   /// @param extensionData Opaque bytes forwarded to liquidity extensions (beforeAddLiquidity / afterAddLiquidity).
   /// @return amount0Added Token0 added.
   /// @return amount1Added Token1 added.
@@ -167,10 +171,7 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
-    int8 minimalCurBin,
-    uint104 minimalPosition,
-    int8 maximalCurBin,
-    uint104 maximalPosition,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable returns (uint256 amount0Added, uint256 amount1Added);
 }

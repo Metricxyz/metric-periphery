@@ -66,10 +66,12 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateOwner(owner);
     _validateDeltas(deltas);
+    _validateBinAndBinPosition(pool, binPositionBounds);
     return _addLiquidity(pool, owner, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, extensionData);
   }
 
@@ -80,17 +82,19 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     LiquidityDelta calldata deltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _validateDeltas(deltas);
+    _validateBinAndBinPosition(pool, binPositionBounds);
     return _addLiquidity(pool, msg.sender, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, extensionData);
   }
 
   /// @notice Add liquidity from a weight vector (used as provisional shares for a probe), then rescale shares by
   ///         `min(max0/need0, max1/need1)` (missing leg treated as unconstrained) and execute the paying add.
   /// @dev The probe always reverts inside the callback with `LiquidityProbe(need0, need1)` so the pool state is
-  ///      unchanged; the second call uses scaled integer shares. Deposit composition follows the pool cursor at
-  ///      probe time; use slot0 cursor bounds to revert when state has been manipulated.
+  ///      unchanged; the second call uses scaled integer shares. Deposit composition follows the current bin
+  ///      position at probe time; use slot0 bin-position bounds to revert when state has been manipulated.
   function addLiquidityWeighted(
     address pool,
     address owner,
@@ -98,17 +102,14 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
-    int8 minimalCurBin,
-    uint104 minimalPosition,
-    int8 maximalCurBin,
-    uint104 maximalPosition,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _requireFactoryPool(pool);
     _validateOwner(owner);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
-    _validateBinAndBinPosition(pool, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    _validateBinAndBinPosition(pool, binPositionBounds);
 
     try IMetricOmmPoolActions(pool)
       .addLiquidity(owner, salt, weightDeltas, abi.encode(KIND_PROBE), extensionData) returns (
@@ -125,24 +126,21 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
   /// @notice Add liquidity from a weight vector (used as provisional shares for a probe), then rescale shares by
   ///         `min(max0/need0, max1/need1)` (missing leg treated as unconstrained) and execute the paying add.
   /// @dev The probe always reverts inside the callback with `LiquidityProbe(need0, need1)` so the pool state is
-  ///      unchanged; the second call uses scaled integer shares. Deposit composition follows the pool cursor at
-  ///      probe time; use slot0 cursor bounds to revert when state has been manipulated.
+  ///      unchanged; the second call uses scaled integer shares. Deposit composition follows the current bin
+  ///      position at probe time; use slot0 bin-position bounds to revert when state has been manipulated.
   function addLiquidityWeighted(
     address pool,
     uint80 salt,
     LiquidityDelta calldata weightDeltas,
     uint256 maxAmountToken0,
     uint256 maxAmountToken1,
-    int8 minimalCurBin,
-    uint104 minimalPosition,
-    int8 maximalCurBin,
-    uint104 maximalPosition,
+    BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
     _requireFactoryPool(pool);
     _validateDeltas(weightDeltas);
     _validatePositiveWeights(weightDeltas);
-    _validateBinAndBinPosition(pool, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    _validateBinAndBinPosition(pool, binPositionBounds);
 
     try IMetricOmmPoolActions(pool)
       .addLiquidity(msg.sender, salt, weightDeltas, abi.encode(KIND_PROBE), extensionData) returns (
@@ -272,28 +270,45 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     }
   }
 
-  function _validateBinAndBinPosition(
-    address pool,
-    int8 minimalCurBin,
-    uint104 minimalPosition,
-    int8 maximalCurBin,
-    uint104 maximalPosition
-  ) internal view {
-    if (minimalCurBin > maximalCurBin) {
-      revert CursorOutOfBounds(0, 0, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+  function _validateBinAndBinPosition(address pool, BinPositionBounds calldata bounds) internal view {
+    if (bounds.minimalCurBin > bounds.maximalCurBin) {
+      revert BinPositionOutOfBounds(
+        0, 0, bounds.minimalCurBin, bounds.minimalPosition, bounds.maximalCurBin, bounds.maximalPosition
+      );
     }
 
     (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(pool);
 
     int256 curBin = curBinIdx;
-    if (curBin < minimalCurBin || curBin > maximalCurBin) {
-      revert CursorOutOfBounds(curBinIdx, curPosInBin, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    if (curBin < bounds.minimalCurBin || curBin > bounds.maximalCurBin) {
+      revert BinPositionOutOfBounds(
+        curBinIdx,
+        curPosInBin,
+        bounds.minimalCurBin,
+        bounds.minimalPosition,
+        bounds.maximalCurBin,
+        bounds.maximalPosition
+      );
     }
-    if (curBinIdx == minimalCurBin && curPosInBin < minimalPosition) {
-      revert CursorOutOfBounds(curBinIdx, curPosInBin, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    if (curBinIdx == bounds.minimalCurBin && curPosInBin < bounds.minimalPosition) {
+      revert BinPositionOutOfBounds(
+        curBinIdx,
+        curPosInBin,
+        bounds.minimalCurBin,
+        bounds.minimalPosition,
+        bounds.maximalCurBin,
+        bounds.maximalPosition
+      );
     }
-    if (curBinIdx == maximalCurBin && curPosInBin > maximalPosition) {
-      revert CursorOutOfBounds(curBinIdx, curPosInBin, minimalCurBin, minimalPosition, maximalCurBin, maximalPosition);
+    if (curBinIdx == bounds.maximalCurBin && curPosInBin > bounds.maximalPosition) {
+      revert BinPositionOutOfBounds(
+        curBinIdx,
+        curPosInBin,
+        bounds.minimalCurBin,
+        bounds.minimalPosition,
+        bounds.maximalCurBin,
+        bounds.maximalPosition
+      );
     }
   }
 

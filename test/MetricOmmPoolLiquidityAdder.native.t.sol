@@ -7,11 +7,14 @@ import {IMetricOmmPoolLiquidityAdder} from "../contracts/interfaces/IMetricOmmPo
 import {PeripheryPayments} from "../contracts/base/PeripheryPayments.sol";
 import {MetricOmmPoolLiquidityAdderTest} from "./MetricOmmPoolLiquidityAdder.t.sol";
 
-bytes4 constant ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER =
-  bytes4(keccak256("addLiquidityExactShares(address,address,uint80,(int256[],uint256[]),uint256,uint256,bytes)"));
+bytes4 constant ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER = bytes4(
+  keccak256(
+    "addLiquidityExactShares(address,address,uint80,(int256[],uint256[]),uint256,uint256,(int8,uint104,int8,uint104),bytes)"
+  )
+);
 bytes4 constant ADD_LIQUIDITY_WEIGHTED_WITH_OWNER = bytes4(
   keccak256(
-    "addLiquidityWeighted(address,address,uint80,(int256[],uint256[]),uint256,uint256,int8,uint104,int8,uint104,bytes)"
+    "addLiquidityWeighted(address,address,uint80,(int256[],uint256[]),uint256,uint256,(int8,uint104,int8,uint104),bytes)"
   )
 );
 
@@ -54,8 +57,9 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     LiquidityDelta memory d = _deltaAbovePrice(4, 80_000);
 
     vm.prank(alice);
-    (uint256 need0,) =
-      helper.addLiquidityExactShares(address(pool), alice, 19, d, type(uint256).max, type(uint256).max, "");
+    (uint256 need0,) = helper.addLiquidityExactShares(
+      address(pool), alice, 19, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
+    );
 
     uint256 aliceEthBefore = alice.balance;
     uint256 aliceWethBefore = weth.balanceOf(alice);
@@ -63,7 +67,15 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     vm.prank(alice);
     bytes[] memory calls = new bytes[](1);
     calls[0] = abi.encodeWithSelector(
-      ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER, address(pool), alice, uint80(20), d, need0, type(uint256).max, ""
+      ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER,
+      address(pool),
+      alice,
+      uint80(20),
+      d,
+      need0,
+      type(uint256).max,
+      _unconstrainedBinPositionBounds(),
+      ""
     );
     helper.multicall{value: need0}(calls);
 
@@ -77,8 +89,9 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     LiquidityDelta memory d = _deltaAbovePrice(4, 80_000);
 
     vm.prank(alice);
-    (uint256 need0, uint256 need1) =
-      helper.addLiquidityExactShares(address(pool), alice, 21, d, type(uint256).max, type(uint256).max, "");
+    (uint256 need0, uint256 need1) = helper.addLiquidityExactShares(
+      address(pool), alice, 21, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
+    );
 
     uint256 nativePart = need0 / 2;
     uint256 wethPart = need0 - nativePart;
@@ -87,7 +100,7 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
 
     vm.prank(alice);
     helper.addLiquidityExactShares{value: nativePart}(
-      address(pool), alice, 22, d, type(uint256).max, type(uint256).max, ""
+      address(pool), alice, 22, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
     );
 
     assertGt(stateView.positionBinShares(address(pool), alice, 22, int8(4)), 0, "shares minted");
@@ -105,7 +118,15 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     vm.prank(alice);
     bytes[] memory calls = new bytes[](2);
     calls[0] = abi.encodeWithSelector(
-      ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER, address(pool), alice, uint80(23), d, 1_000 ether, 1_000 ether, ""
+      ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER,
+      address(pool),
+      alice,
+      uint80(23),
+      d,
+      1_000 ether,
+      1_000 ether,
+      _unconstrainedBinPositionBounds(),
+      ""
     );
     calls[1] = abi.encodeWithSelector(helper.refundETH.selector);
     helper.multicall{value: msgValue}(calls);
@@ -117,7 +138,6 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
 
   function test_multicall_ethInput_weighted() public {
     LiquidityDelta memory w = _deltaAbovePrice(4, 5_000_000);
-    (int8 minBin, uint104 minPos, int8 maxBin, uint104 maxPos) = _unconstrainedCursorBounds();
     uint256 aliceEthBefore = alice.balance;
 
     vm.prank(alice);
@@ -130,10 +150,7 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
       w,
       50_000,
       50_000,
-      minBin,
-      minPos,
-      maxBin,
-      maxPos,
+      _unconstrainedBinPositionBounds(),
       ""
     );
     helper.multicall{value: 50_000}(calls);
