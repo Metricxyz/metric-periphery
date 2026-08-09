@@ -25,12 +25,12 @@ import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 ///        - metricToken1 breach (bid suspect-low)  blocks zeroForOne == false (token0 outflow)
 ///        - both breached blocks both directions
 ///
-///      Watermarks decay linearly at decayPerSecondE8 (lazy, per bin). Guarantee: value per
+///      Watermarks decay linearly at decayPerSecondE18 (lazy, per bin). Guarantee: value per
 ///      share at oracle marks cannot fall faster than drawdown (one-time) + decay * t (ongoing).
 contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLossExtension {
   uint256 private constant Q64 = 1 << 64;
   uint256 private constant E6 = 1e6;
-  uint256 private constant E8 = 1e8;
+  uint256 private constant E18 = 1e18;
   /// @dev Fixed-point scale for per-share metrics; keeps precision within uint104 headroom.
   uint256 private constant METRIC_SCALE = 1e6;
   uint256 private constant METRIC_MAX = type(uint104).max;
@@ -43,7 +43,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   constructor(address factory_) BaseMetricExtension(factory_) {}
 
   /// @notice Called once by the factory at pool creation.
-  ///         `data` = `abi.encode(uint32 drawdownE6, uint32 decayPerSecondE8, uint40 timelockSeconds)`.
+  ///         `data` = `abi.encode(uint32 drawdownE6, uint64 decayPerSecondE18, uint40 timelockSeconds)`.
   function initialize(address pool, bytes calldata data)
     external
     override(BaseMetricExtension, IOracleValueStopLossExtension)
@@ -54,16 +54,16 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
       revert OracleStopLossAlreadyInitialized(pool);
     }
 
-    (uint32 drawdownE6, uint32 decayPerSecondE8, uint40 timelock) = abi.decode(data, (uint32, uint32, uint40));
+    (uint32 drawdownE6, uint64 decayPerSecondE18, uint40 timelock) = abi.decode(data, (uint32, uint64, uint40));
     _validateDrawdown(drawdownE6);
-    _validateDecay(decayPerSecondE8);
+    _validateDecay(decayPerSecondE18);
 
     oracleStopLossConfig[pool] = PoolStopLossConfig({
-      drawdownE6: drawdownE6, decayPerSecondE8: decayPerSecondE8, timelock: timelock, initialized: true
+      drawdownE6: drawdownE6, decayPerSecondE18: decayPerSecondE18, timelock: timelock, initialized: true
     });
 
     emit OracleStopLossDrawdownSet(pool, drawdownE6);
-    emit OracleStopLossDecaySet(pool, decayPerSecondE8);
+    emit OracleStopLossDecaySet(pool, decayPerSecondE18);
     emit OracleStopLossTimelockSet(pool, timelock);
     return IMetricOmmExtensions.initialize.selector;
   }
@@ -71,7 +71,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   /// @notice Current (decayed) watermarks — what the next check compares against.
   function currentHighWatermarks(address pool, int8 binIdx) external view returns (uint256 hwm0, uint256 hwm1) {
     BinHighWatermarks memory hwm = highWatermarks[pool][binIdx];
-    uint256 rate = oracleStopLossConfig[pool].decayPerSecondE8;
+    uint256 rate = oracleStopLossConfig[pool].decayPerSecondE18;
     uint256 dt = block.timestamp - hwm.lastDecayTs;
     return (_decayed(hwm.token0, rate, dt), _decayed(hwm.token1, rate, dt));
   }
@@ -127,30 +127,31 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     emit OracleStopLossDrawdownCancelled(pool_);
   }
 
-  /// @notice Linear watermark decay per second, E8 scale (58 ~= 5%/day). 0 disables decay.
-  function proposeOracleStopLossDecay(address pool_, uint256 newDecayPerSecondE8) external onlyPoolAdmin(pool_) {
-    _validateDecay(newDecayPerSecondE8);
+  /// @notice Linear watermark decay per second, E18 scale (~5.8e11 ~= 5%/day). 0 disables decay.
+  function proposeOracleStopLossDecay(address pool_, uint256 newDecayPerSecondE18) external onlyPoolAdmin(pool_) {
+    _validateDecay(newDecayPerSecondE18);
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
     uint40 executeAfter = _afterTimelock(pool_);
-    sched.pendingDecayPerSecondE8 = uint32(newDecayPerSecondE8);
+    // forge-lint: disable-next-line(unsafe-typecast)
+    sched.pendingDecayPerSecondE18 = uint64(newDecayPerSecondE18);
     sched.pendingDecayExecuteAfter = executeAfter;
-    emit OracleStopLossDecayProposed(pool_, newDecayPerSecondE8, executeAfter);
+    emit OracleStopLossDecayProposed(pool_, newDecayPerSecondE18, executeAfter);
   }
 
   function executeOracleStopLossDecay(address pool_) external onlyPoolAdmin(pool_) {
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
     if (sched.pendingDecayExecuteAfter == 0) revert OracleStopLossNoPendingDecay(pool_);
     _requireElapsed(sched.pendingDecayExecuteAfter);
-    uint32 decay = sched.pendingDecayPerSecondE8;
-    oracleStopLossConfig[pool_].decayPerSecondE8 = decay;
-    (sched.pendingDecayPerSecondE8, sched.pendingDecayExecuteAfter) = (0, 0);
+    uint64 decay = sched.pendingDecayPerSecondE18;
+    oracleStopLossConfig[pool_].decayPerSecondE18 = decay;
+    (sched.pendingDecayPerSecondE18, sched.pendingDecayExecuteAfter) = (0, 0);
     emit OracleStopLossDecaySet(pool_, decay);
   }
 
   function cancelOracleStopLossDecay(address pool_) external onlyPoolAdmin(pool_) {
     PoolStopLossSchedule storage sched = _initializedSchedule(pool_);
     if (sched.pendingDecayExecuteAfter == 0) revert OracleStopLossNoPendingDecay(pool_);
-    (sched.pendingDecayPerSecondE8, sched.pendingDecayExecuteAfter) = (0, 0);
+    (sched.pendingDecayPerSecondE18, sched.pendingDecayExecuteAfter) = (0, 0);
     emit OracleStopLossDecayCancelled(pool_);
   }
 
@@ -233,7 +234,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     bytes32[] memory states = PoolStateLibrary._multipleBinStates(pool_, binIdxs);
     bytes32[] memory shares = PoolStateLibrary._multipleBinTotalShares(pool_, binIdxs);
     uint256 floorMultiplier = E6 - drawdown;
-    uint256 decayRate = cfg.decayPerSecondE8;
+    uint256 decayRate = cfg.decayPerSecondE18;
     for (uint256 i = 0; i < count; i++) {
       uint256 totalShares = PoolStateLibrary._decodeBinTotalShares(shares[i]);
       if (totalShares == 0) continue;
@@ -313,8 +314,8 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     if (drawdownE6 > E6) revert OracleStopLossDrawdownTooLarge(drawdownE6);
   }
 
-  function _validateDecay(uint256 decayPerSecondE8) private pure {
-    if (decayPerSecondE8 > E8) revert OracleStopLossDecayTooLarge(decayPerSecondE8);
+  function _validateDecay(uint256 decayPerSecondE18) private pure {
+    if (decayPerSecondE18 > E18) revert OracleStopLossDecayTooLarge(decayPerSecondE18);
   }
 
   /// @dev Clamp pathological oracle-price blowups; normal bins with uint104 balances stay below this.
@@ -323,11 +324,11 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   }
 
   /// @dev Linear decay; floors at 0 (ratchet restores from the live metric on next touch).
-  function _decayed(uint256 hwm, uint256 ratePerSecondE8, uint256 dt) private pure returns (uint256) {
-    if (ratePerSecondE8 == 0 || dt == 0 || hwm == 0) return hwm;
-    uint256 factor = ratePerSecondE8 * dt;
-    if (factor >= E8) return 0;
-    return hwm - (hwm * factor) / E8;
+  function _decayed(uint256 hwm, uint256 ratePerSecondE18, uint256 dt) private pure returns (uint256) {
+    if (ratePerSecondE18 == 0 || dt == 0 || hwm == 0) return hwm;
+    uint256 factor = ratePerSecondE18 * dt;
+    if (factor >= E18) return 0;
+    return hwm - (hwm * factor) / E18;
   }
 
   /// @dev Ratchet up on new highs; report breach below the drawdown floor. Direction-aware
