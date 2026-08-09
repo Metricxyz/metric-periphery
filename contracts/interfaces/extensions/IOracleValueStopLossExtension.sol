@@ -12,7 +12,7 @@ interface IOracleValueStopLossExtension {
 
   struct PoolStopLossConfig {
     uint32 drawdownE6;
-    uint32 decayPerSecondE8;
+    uint64 decayPerSecondE18;
     uint40 timelock;
     bool initialized;
   }
@@ -22,7 +22,7 @@ interface IOracleValueStopLossExtension {
     uint40 pendingTimelockExecuteAfter;
     uint32 pendingDrawdownE6;
     uint40 pendingDrawdownExecuteAfter;
-    uint32 pendingDecayPerSecondE8;
+    uint64 pendingDecayPerSecondE18;
     uint40 pendingDecayExecuteAfter;
   }
 
@@ -50,8 +50,8 @@ interface IOracleValueStopLossExtension {
   event OracleStopLossDrawdownProposed(address indexed pool, uint256 proposedDrawdownE6, uint256 executeAfter);
   event OracleStopLossDrawdownSet(address indexed pool, uint256 newMaxDrawdownE6);
   event OracleStopLossDrawdownCancelled(address indexed pool);
-  event OracleStopLossDecayProposed(address indexed pool, uint256 proposedDecayPerSecondE8, uint256 executeAfter);
-  event OracleStopLossDecaySet(address indexed pool, uint256 newDecayPerSecondE8);
+  event OracleStopLossDecayProposed(address indexed pool, uint256 proposedDecayPerSecondE18, uint256 executeAfter);
+  event OracleStopLossDecaySet(address indexed pool, uint256 newDecayPerSecondE18);
   event OracleStopLossDecayCancelled(address indexed pool);
   event OracleStopLossHighWatermarkProposed(
     address indexed pool, int8 binIdx, uint104 proposedHwmToken0, uint104 proposedHwmToken1, uint256 executeAfter
@@ -77,7 +77,7 @@ interface IOracleValueStopLossExtension {
 
   function cancelOracleStopLossDrawdown(address pool) external;
 
-  function proposeOracleStopLossDecay(address pool, uint256 newDecayPerSecondE8) external;
+  function proposeOracleStopLossDecay(address pool, uint256 newDecayPerSecondE18) external;
 
   function executeOracleStopLossDecay(address pool) external;
 
