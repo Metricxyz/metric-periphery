@@ -30,7 +30,9 @@ contract MockExtensionExtsloadPool is Extsload {
 contract OracleValueStopLossSubExtensionTest is Test {
   uint256 private constant Q64 = 1 << 64;
   uint256 private constant E6 = 1e6;
-  uint256 private constant E8 = 1e8;
+  uint256 private constant E18 = 1e18;
+  /// @dev ~5%/day linear decay
+  uint256 private constant DECAY_5PCT_PER_DAY = 58e10;
   uint256 private constant MIN_SHARES = 1000;
   uint256 private constant METRIC_SCALE = 1e6;
   uint256 private constant BIN_SHARES = 10_000;
@@ -51,9 +53,9 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
   // ---- helpers ----
 
-  function _initPool(address pool, uint32 drawdownE6, uint32 decayE8, uint40 timelock) internal {
+  function _initPool(address pool, uint32 drawdownE6, uint64 decayE18, uint40 timelock) internal {
     vm.prank(address(factoryStub));
-    extension.initialize(pool, abi.encode(drawdownE6, decayE8, timelock));
+    extension.initialize(pool, abi.encode(drawdownE6, decayE18, timelock));
   }
 
   function _proposeAndExecuteTimelock(uint40 timelock) internal {
@@ -131,8 +133,8 @@ contract OracleValueStopLossSubExtensionTest is Test {
     extension.executeOracleStopLossDrawdown(address(mockPool));
   }
 
-  function _proposeAndExecuteDecay(uint256 decayE8) internal {
-    extension.proposeOracleStopLossDecay(address(mockPool), decayE8);
+  function _proposeAndExecuteDecay(uint256 decayE18) internal {
+    extension.proposeOracleStopLossDecay(address(mockPool), decayE18);
     extension.executeOracleStopLossDecay(address(mockPool));
   }
 
@@ -149,10 +151,10 @@ contract OracleValueStopLossSubExtensionTest is Test {
     (, v,,) = extension.oracleStopLossConfig(address(mockPool));
   }
 
-  function _configure(uint256 drawdownE6, uint256 decayE8) internal {
+  function _configure(uint256 drawdownE6, uint256 decayE18) internal {
     vm.startPrank(admin);
     _proposeAndExecuteDrawdown(drawdownE6);
-    if (decayE8 > 0) _proposeAndExecuteDecay(decayE8);
+    if (decayE18 > 0) _proposeAndExecuteDecay(decayE18);
     vm.stopPrank();
   }
 
@@ -178,20 +180,22 @@ contract OracleValueStopLossSubExtensionTest is Test {
     extension.proposeOracleStopLossDrawdown(address(mockPool), E6 + 1);
   }
 
-  function test_decayCannotExceed1e8() public {
+  function test_decayCannotExceed1e18() public {
     vm.prank(admin);
-    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossDecayTooLarge.selector, E8 + 1));
-    extension.proposeOracleStopLossDecay(address(mockPool), E8 + 1);
+    vm.expectRevert(abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossDecayTooLarge.selector, E18 + 1));
+    extension.proposeOracleStopLossDecay(address(mockPool), E18 + 1);
   }
 
   function test_initialize_setsConfig() public {
     OracleValueStopLossExtension freshExtension = new OracleValueStopLossExtension(address(factoryStub));
     MockExtensionExtsloadPool freshPool = new MockExtensionExtsloadPool(address(factoryStub), MIN_SHARES);
     vm.prank(address(factoryStub));
-    freshExtension.initialize(address(freshPool), abi.encode(uint32(50_000), uint32(58), uint40(3 days)));
-    (uint32 dd, uint32 decay, uint40 tl, bool initialized) = freshExtension.oracleStopLossConfig(address(freshPool));
+    freshExtension.initialize(
+      address(freshPool), abi.encode(uint32(50_000), uint64(DECAY_5PCT_PER_DAY), uint40(3 days))
+    );
+    (uint32 dd, uint64 decay, uint40 tl, bool initialized) = freshExtension.oracleStopLossConfig(address(freshPool));
     assertEq(dd, 50_000);
-    assertEq(decay, 58);
+    assertEq(decay, DECAY_5PCT_PER_DAY);
     assertEq(tl, 3 days);
     assertTrue(initialized);
   }
@@ -248,10 +252,10 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
   function test_decayTimelockZeroExecutesImmediately() public {
     vm.startPrank(admin);
-    extension.proposeOracleStopLossDecay(address(mockPool), 58);
+    extension.proposeOracleStopLossDecay(address(mockPool), DECAY_5PCT_PER_DAY);
     extension.executeOracleStopLossDecay(address(mockPool));
     vm.stopPrank();
-    assertEq(_decay(), 58);
+    assertEq(_decay(), DECAY_5PCT_PER_DAY);
   }
 
   function test_cancelPendingDrawdown() public {
@@ -439,7 +443,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
   function test_decayRearmsAfterPermanentRepricing() public {
     uint128 price = uint128(Q64);
     _storeBin(0, 1000, 1000, BIN_SHARES);
-    _configure(50_000, 58); // ~5%/day
+    _configure(50_000, DECAY_5PCT_PER_DAY); // ~5%/day
 
     _exposeStopLoss(0, 0, price, false);
 
@@ -448,7 +452,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     vm.expectRevert();
     _exposeStopLoss(0, 0, price, true);
 
-    // Warp until decayed watermark ratchets below the drawdown floor (~4 days at 58 E8/s).
+    // Warp until decayed watermark ratchets below the drawdown floor (~4 days at DECAY_5PCT_PER_DAY E18/s).
     vm.warp(block.timestamp + 5 days);
 
     _exposeStopLoss(0, 0, price, true);
@@ -469,7 +473,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     uint128 initPrice = uint128(Q64);
 
     _storeBin(0, t0, t1, shares);
-    _configure(50_000, 58);
+    _configure(50_000, DECAY_5PCT_PER_DAY);
 
     _exposeStopLoss(0, 0, initPrice, false);
 
@@ -513,7 +517,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     uint128 price = uint128(Q64);
 
     _storeBin(0, t0, t1, shares);
-    _configure(50_000, 58);
+    _configure(50_000, DECAY_5PCT_PER_DAY);
 
     _exposeStopLoss(0, 0, price, false);
 
@@ -527,7 +531,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
   function test_decayFloorsAtZero_ratchetRestores() public {
     uint128 price = uint128(Q64);
     _storeBin(0, 1000, 1000, BIN_SHARES);
-    _configure(50_000, E8); // 100%/second
+    _configure(50_000, E18); // 100%/second
 
     _exposeStopLoss(0, 0, price, false);
 
@@ -547,7 +551,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
   function test_twoSidedBreach_decayRearms_renewedExtractionRetriggers() public {
     uint128 price = uint128(Q64);
     _storeBin(0, 1000, 1000, BIN_SHARES);
-    _configure(50_000, 58);
+    _configure(50_000, DECAY_5PCT_PER_DAY);
 
     _exposeStopLoss(0, 0, price, false);
 
@@ -570,7 +574,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
   function test_setDecayZero_freezesRecovery() public {
     uint128 price = uint128(Q64);
     _storeBin(0, 1000, 1000, BIN_SHARES);
-    _configure(50_000, 58);
+    _configure(50_000, DECAY_5PCT_PER_DAY);
 
     _exposeStopLoss(0, 0, price, false);
     _storeBin(0, 800, 800, BIN_SHARES);
