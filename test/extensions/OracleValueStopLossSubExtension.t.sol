@@ -34,7 +34,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
   /// @dev ~5%/day linear decay
   uint256 private constant DECAY_5PCT_PER_DAY = 58e10;
   uint256 private constant MIN_SHARES = 1000;
-  uint256 private constant METRIC_SCALE = 1e6;
+  uint256 private constant METRIC_SCALE = 1e18;
   uint256 private constant BIN_SHARES = 10_000;
 
   AllowlistFactoryStub factoryStub;

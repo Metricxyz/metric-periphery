@@ -32,7 +32,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   uint256 private constant E6 = 1e6;
   uint256 private constant E18 = 1e18;
   /// @dev Fixed-point scale for per-share metrics; keeps precision within uint104 headroom.
-  uint256 private constant METRIC_SCALE = 1e6;
+  uint256 private constant METRIC_SCALE = 1e18;
   uint256 private constant METRIC_MAX = type(uint104).max;
 
   mapping(address pool => PoolStopLossConfig) public oracleStopLossConfig;
