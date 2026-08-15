@@ -14,16 +14,16 @@ import {IOracleValueStopLossExtension} from "../../contracts/interfaces/extensio
 
 contract MockExtensionExtsloadPool is Extsload {
   address public immutable factory;
-  uint256 public immutable minimalMintableLiquidity;
+  uint256 public immutable minimalOperationalLiquidity;
 
-  constructor(address factory_, uint256 minimalMintableLiquidity_) {
+  constructor(address factory_, uint256 minimalOperationalLiquidity_) {
     factory = factory_;
-    minimalMintableLiquidity = minimalMintableLiquidity_;
+    minimalOperationalLiquidity = minimalOperationalLiquidity_;
   }
 
   function getImmutables() external view returns (PoolImmutables memory immutables) {
     immutables.factory = factory;
-    immutables.minimalMintableLiquidity = minimalMintableLiquidity;
+    immutables.minimalOperationalLiquidity = minimalOperationalLiquidity;
   }
 }
 
@@ -497,7 +497,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
   // ---- 5. dust shares saturate ----
 
   function test_dustShares_flooredByMinLiquidity_noRevert() public {
-    // Dust shares are floored at minimalMintableLiquidity; max uint104 balances clamp to uint104.max.
+    // Dust shares are floored at minimalOperationalLiquidity; max uint104 balances clamp to uint104.max.
     _storeBin(0, type(uint104).max, type(uint104).max, 1);
     _configure(50_000, 0);
 
