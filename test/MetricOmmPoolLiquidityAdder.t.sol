@@ -88,7 +88,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
   uint104 constant INITIAL_TOKEN_0_DENSITY = 1e18;
   uint104 constant INITIAL_TOKEN_1_DENSITY = 1e18;
-  uint104 constant MINIMAL_MINTABLE_LIQUIDITY = 1000;
+  uint104 constant MINIMAL_OPERATIONAL_LIQUIDITY = 1000;
   uint24 constant PROTOCOL_FEE = 1e4;
   uint24 constant ADMIN_FEE = 5e3;
 
@@ -123,7 +123,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       token1ScaleMultiplier,
       INITIAL_TOKEN_0_DENSITY,
       INITIAL_TOKEN_1_DENSITY,
-      MINIMAL_MINTABLE_LIQUIDITY,
+      MINIMAL_OPERATIONAL_LIQUIDITY,
       PROTOCOL_FEE + ADMIN_FEE,
       0,
       nnStates,
@@ -134,7 +134,11 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     factoryStub.registerPool(
       address(pool),
       PoolFeeConfig({
-        protocolSpreadFeeE6: PROTOCOL_FEE, adminSpreadFeeE6: ADMIN_FEE, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0
+        protocolSpreadFeeE6: PROTOCOL_FEE,
+        adminSpreadFeeE6: ADMIN_FEE,
+        protocolNotionalFeeE8: 0,
+        adminNotionalFeeE8: 0,
+        protocolFeeOnAdminNotionalFeeE6: 0
       }),
       makeAddr("adminFeeDest"),
       address(this)

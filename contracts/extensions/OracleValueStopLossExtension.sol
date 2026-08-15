@@ -218,7 +218,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     PoolStopLossConfig memory cfg = oracleStopLossConfig[pool_];
     uint256 drawdown = cfg.drawdownE6;
     if (drawdown == 0) return;
-    uint256 minShares = IMetricOmmPool(pool_).getImmutables().minimalMintableLiquidity;
+    uint256 minShares = IMetricOmmPool(pool_).getImmutables().minimalOperationalLiquidity;
     if (minShares == 0) minShares = 1;
     PoolSlot0 memory s0 = Slot0Library.unpack(packedSlot0Initial);
     PoolSlot0 memory s1 = Slot0Library.unpack(packedSlot0Final);
@@ -244,7 +244,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     }
   }
 
-  /// @dev Per-share metrics in bin scaled units; shares floored at minimalMintableLiquidity.
+  /// @dev Per-share metrics in bin scaled units; shares floored at minimalOperationalLiquidity.
   ///      Token0 metric divides by bid, token1 metric multiplies by ask — higher watermarks than mid.
   function _metrics(
     uint104 t0,

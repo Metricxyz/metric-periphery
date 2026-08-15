@@ -54,7 +54,7 @@ contract FullMetricExtensionTest is MetricOmmPoolBaseTest {
 
   function test_blocksSwapWhenSwapperNotAllowed() public {
     depositExtension.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
-    _addLiquidity(0, -5, 4, 100_000, EXTENSION_TEST_SALT);
+    _addLiquidity(0, -5, 4, 1_000_000, EXTENSION_TEST_SALT);
 
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToSwap.selector);
     _swap(0, users[0], false, int128(1000), type(uint128).max);
@@ -69,7 +69,7 @@ contract FullMetricExtensionTest is MetricOmmPoolBaseTest {
     depositExtension.setAllowedToDeposit(address(pool), _getCallerAddress(0), true);
     swapExtension.setAllowedToSwap(address(pool), address(callers[0]), true);
 
-    _addLiquidity(0, -5, 4, 100_000, EXTENSION_TEST_SALT);
+    _addLiquidity(0, -5, 4, 1_000_000, EXTENSION_TEST_SALT);
     _swap(0, users[0], false, int128(1000), type(uint128).max);
   }
 

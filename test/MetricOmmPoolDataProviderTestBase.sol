@@ -120,7 +120,7 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
 
   uint104 internal constant INITIAL_TOKEN_0_DENSITY = 1e18;
   uint104 internal constant INITIAL_TOKEN_1_DENSITY = 1e18;
-  uint104 internal constant MINIMAL_MINTABLE_LIQUIDITY = 1000;
+  uint104 internal constant MINIMAL_OPERATIONAL_LIQUIDITY = 1000;
   uint24 internal constant PROTOCOL_SPREAD = 300;
   uint24 internal constant ADMIN_SPREAD = 700;
   uint24 internal constant PROTOCOL_NOTIONAL = 5_000;
@@ -154,7 +154,7 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
       token1ScaleMultiplier,
       INITIAL_TOKEN_0_DENSITY,
       INITIAL_TOKEN_1_DENSITY,
-      MINIMAL_MINTABLE_LIQUIDITY,
+      MINIMAL_OPERATIONAL_LIQUIDITY,
       PROTOCOL_SPREAD + ADMIN_SPREAD,
       0,
       nnStates,
@@ -215,7 +215,8 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
         protocolSpreadFeeE6: PROTOCOL_SPREAD,
         adminSpreadFeeE6: ADMIN_SPREAD,
         protocolNotionalFeeE8: PROTOCOL_NOTIONAL,
-        adminNotionalFeeE8: ADMIN_NOTIONAL
+        adminNotionalFeeE8: ADMIN_NOTIONAL,
+        protocolFeeOnAdminNotionalFeeE6: 0
       }),
       makeAddr("adminFeeDest"),
       address(this)
@@ -288,9 +289,10 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     (uint128 bidFromOracleX64, uint128 askFromOracleX64) = IPriceProvider(oracle).getBidAndAskPrice();
     (uint256 midPriceX64, uint256 baseFeeX64) =
       SwapMath.midAndSpreadFeeX64FromBidAsk(uint256(bidFromOracleX64), uint256(askFromOracleX64));
-    (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6,,) = PoolStateLibrary._slot0(pool);
+    (, int8 curBinIdx, uint104 curPosInBin, int24 curBinDistFromProvidedPriceE6, uint24 spreadFeeE6,) =
+      PoolStateLibrary._slot0(pool);
     (,, uint16 lengthE6, uint16 addFeeBuyE6, uint16 addFeeSellE6) = PoolStateLibrary._binState(pool, curBinIdx);
-    (,, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8) = IMetricOmmPoolFactory(factory).poolFeeConfig(pool);
+    (,, uint24 protocolNotionalFeeE8, uint24 adminNotionalFeeE8,) = IMetricOmmPoolFactory(factory).poolFeeConfig(pool);
     uint256 notionalFeeE8 = uint256(protocolNotionalFeeE8) + uint256(adminNotionalFeeE8);
 
     uint256 lowerPriceX64 = _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6, midPriceX64, Math.Rounding.Floor);
@@ -298,8 +300,10 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     uint256 upperPriceX64 = _distanceE6ToPriceX64(int24(distUpperE6), midPriceX64, Math.Rounding.Floor);
     uint256 marginalPriceX64 =
       SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, curPosInBin, Math.Rounding.Floor);
-    uint256 buyFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeBuyE6), Q64, ONE_E6);
-    uint256 sellFeeX64 = baseFeeX64 + Math.mulDiv(uint256(addFeeSellE6), Q64, ONE_E6);
+    uint256 buyFeeX64 =
+      SwapMath.binFeeWithSpreadFeeOnTopX64(baseFeeX64 + Math.mulDiv(uint256(addFeeBuyE6), Q64, ONE_E6), spreadFeeE6);
+    uint256 sellFeeX64 =
+      SwapMath.binFeeWithSpreadFeeOnTopX64(baseFeeX64 + Math.mulDiv(uint256(addFeeSellE6), Q64, ONE_E6), spreadFeeE6);
 
     uint256 askBeforeNotional = Math.mulDiv(marginalPriceX64, Q64 + buyFeeX64, Q64, Math.Rounding.Ceil);
     uint256 bidAfterSpread = Math.mulDiv(marginalPriceX64, Q64, Q64 + sellFeeX64, Math.Rounding.Floor);
