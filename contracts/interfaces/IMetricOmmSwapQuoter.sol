@@ -61,6 +61,7 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
   /// @notice Multihop hypothetical exact-input quote parameters.
   /// @param bidPricesX64 Hypothetical bid price per pool; length must match `pools`.
   /// @param askPricesX64 Hypothetical ask price per pool; length must match `pools`.
+  /// @param referencePricesX64 Hypothetical reference price per pool; length must match `pools`.
   struct QuoteHypotheticalExactInputParams {
     address[] pools;
     bytes[] extensionDatas;
@@ -68,11 +69,13 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 amountIn;
     uint128[] bidPricesX64;
     uint128[] askPricesX64;
+    uint128[] referencePricesX64;
   }
 
   /// @notice Multihop hypothetical exact-output quote parameters.
   /// @param bidPricesX64 Hypothetical bid price per pool; length must match `pools`.
   /// @param askPricesX64 Hypothetical ask price per pool; length must match `pools`.
+  /// @param referencePricesX64 Hypothetical reference price per pool; length must match `pools`.
   struct QuoteHypotheticalExactOutputParams {
     address[] pools;
     bytes[] extensionDatas;
@@ -80,6 +83,7 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 amountOut;
     uint128[] bidPricesX64;
     uint128[] askPricesX64;
+    uint128[] referencePricesX64;
   }
 
   // ============ Live quotes: single hop ============
@@ -124,7 +128,7 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
 
   // ============ Hypothetical quotes: single hop ============
 
-  /// @notice Quote single-hop exact-input swap at caller-supplied bid/ask prices.
+  /// @notice Quote single-hop exact-input swap at caller-supplied bid/ask/reference prices.
   /// @dev Uses msg.sender as recipient and empty extensionData; use the overload when extensions gate on those fields.
   function quoteHypotheticalExactInputSingle(
     address pool,
@@ -132,10 +136,11 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 amountIn,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
-    uint128 askPriceX64
+    uint128 askPriceX64,
+    uint128 referencePriceX64
   ) external returns (uint256, uint256);
 
-  /// @notice Quote single-hop exact-input swap at caller-supplied bid/ask with explicit extension context.
+  /// @notice Quote single-hop exact-input swap at caller-supplied bid/ask/reference with explicit extension context.
   function quoteHypotheticalExactInputSingle(
     address pool,
     address recipient,
@@ -144,10 +149,11 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128 referencePriceX64,
     bytes memory extensionData
   ) external returns (uint256, uint256);
 
-  /// @notice Quote single-hop exact-output swap at caller-supplied bid/ask prices.
+  /// @notice Quote single-hop exact-output swap at caller-supplied bid/ask/reference prices.
   /// @dev Uses msg.sender as recipient and empty extensionData; use the overload when extensions gate on those fields.
   function quoteHypotheticalExactOutputSingle(
     address pool,
@@ -155,10 +161,11 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 amountOutDesired,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
-    uint128 askPriceX64
+    uint128 askPriceX64,
+    uint128 referencePriceX64
   ) external returns (uint256, uint256);
 
-  /// @notice Quote single-hop exact-output swap at caller-supplied bid/ask with explicit extension context.
+  /// @notice Quote single-hop exact-output swap at caller-supplied bid/ask/reference with explicit extension context.
   function quoteHypotheticalExactOutputSingle(
     address pool,
     address recipient,
@@ -167,17 +174,18 @@ interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128 referencePriceX64,
     bytes memory extensionData
   ) external returns (uint256, uint256);
 
   // ============ Hypothetical quotes: multihop ============
 
-  /// @notice Quote multihop exact-input swap at caller-supplied bid/ask prices per pool.
+  /// @notice Quote multihop exact-input swap at caller-supplied bid/ask/reference prices per pool.
   function quoteHypotheticalExactInput(QuoteHypotheticalExactInputParams calldata params)
     external
     returns (uint256, uint256);
 
-  /// @notice Quote multihop exact-output swap at caller-supplied bid/ask prices per pool.
+  /// @notice Quote multihop exact-output swap at caller-supplied bid/ask/reference prices per pool.
   function quoteHypotheticalExactOutput(QuoteHypotheticalExactOutputParams calldata params)
     external
     returns (uint256, uint256);

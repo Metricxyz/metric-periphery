@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 // forge-lint: disable-start(unsafe-typecast)
 
 import {Test} from "forge-std/Test.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {PoolExtensions, ExtensionOrders} from "@metric-core/types/PoolExtensionsConfig.sol";
 import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
@@ -36,7 +37,12 @@ contract MockPriceProviderLPH is IPriceProvider {
     quoteToken = _quoteToken;
   }
 
-  function getBidAndAskPrice() external returns (uint128, uint128) {
+  function getQuote() external view returns (uint128 bid, uint128 ask, uint128 referencePrice) {
+    uint128 refPrice = uint128(Math.sqrt(uint256(bidPrice) * uint256(askPrice)));
+    return (bidPrice, askPrice, refPrice);
+  }
+
+  function getBidAndAskPrice() external view returns (uint128, uint128) {
     return (bidPrice, askPrice);
   }
 
@@ -128,17 +134,14 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       0,
       nnStates,
       negStates,
-      0
+      0,
+      type(uint16).max
     );
 
     factoryStub.registerPool(
       address(pool),
       PoolFeeConfig({
-        protocolSpreadFeeE6: PROTOCOL_FEE,
-        adminSpreadFeeE6: ADMIN_FEE,
-        protocolNotionalFeeE8: 0,
-        adminNotionalFeeE8: 0,
-        protocolFeeOnAdminNotionalFeeE6: 0
+        protocolSpreadFeeE6: PROTOCOL_FEE, adminSpreadFeeE6: ADMIN_FEE, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0
       }),
       makeAddr("adminFeeDest"),
       address(this)
@@ -335,7 +338,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
   function test_weighted_revertsBinPositionOutOfBounds() public {
     LiquidityDelta memory w = _deltaAbovePrice(4, 100_000);
-    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(address(pool));
+    (, int8 curBinIdx, uint104 curPosInBin,,,,) = PoolStateLibrary._slot0(address(pool));
 
     IMetricOmmPoolLiquidityAdder.BinPositionBounds memory bounds = IMetricOmmPoolLiquidityAdder.BinPositionBounds({
       minimalCurBin: type(int8).min, minimalPosition: 0, maximalCurBin: int8(-1), maximalPosition: type(uint104).max
@@ -358,7 +361,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
   function test_weighted_revertsWhenMinimalPositionTooHigh() public {
     LiquidityDelta memory w = _deltaAbovePrice(4, 100_000);
-    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(address(pool));
+    (, int8 curBinIdx, uint104 curPosInBin,,,,) = PoolStateLibrary._slot0(address(pool));
 
     IMetricOmmPoolLiquidityAdder.BinPositionBounds memory bounds = IMetricOmmPoolLiquidityAdder.BinPositionBounds({
       minimalCurBin: curBinIdx,

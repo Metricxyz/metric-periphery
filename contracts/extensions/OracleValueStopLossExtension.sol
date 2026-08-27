@@ -195,6 +195,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     uint256 packedSlot0Final,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128,
     int128,
     int128,
     uint256,

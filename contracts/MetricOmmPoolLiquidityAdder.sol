@@ -277,7 +277,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
       );
     }
 
-    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(pool);
+    (, int8 curBinIdx, uint104 curPosInBin,,,,) = PoolStateLibrary._slot0(pool);
 
     int256 curBin = curBinIdx;
     if (curBin < bounds.minimalCurBin || curBin > bounds.maximalCurBin) {

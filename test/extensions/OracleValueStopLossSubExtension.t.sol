@@ -94,13 +94,13 @@ contract OracleValueStopLossSubExtensionTest is Test {
   }
 
   function _packSlot0(int8 binIdx) internal pure returns (uint256) {
-    return Slot0Library.pack(0, binIdx, 0, 0, 0, 0);
+    return Slot0Library.pack(0, binIdx, 0, 0, 0, 0, 0);
   }
 
   function _exposeStopLoss(int8 loBin, int8 hiBin, uint128 priceX64, bool zeroForOne) internal {
     vm.prank(address(mockPool));
     extension.afterSwap(
-      address(0), address(0), zeroForOne, 0, 0, _packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64, 0, 0, 0, ""
+      address(0), address(0), zeroForOne, 0, 0, _packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64, 0, 0, 0, 0, ""
     );
   }
 

@@ -57,7 +57,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
   function _liquidityDepthVsSimulateScenario(uint256 seed, uint8 maxBinsPerSide) internal {
     _randomWalkSwaps(router, address(pool), 18, 18, seed, 1);
 
-    (uint128 bidOracle, uint128 askOracle) = oracle.getBidAndAskPrice();
+    (uint128 bidOracle, uint128 askOracle, uint128 referenceOracle) = oracle.getQuote();
     MetricOmmPoolDataProvider.LiquidityDepth memory depth = helper.getLiquidityDepth(address(pool), maxBinsPerSide);
 
     uint256 runningAsk;
@@ -77,11 +77,22 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
       vm.skip(true, "empty depth ladder side");
     }
 
+    assertEq(depth.oracleBidX64, bidOracle);
+    assertEq(depth.oracleAskX64, askOracle);
+    assertEq(depth.oracleReferenceX64, referenceOracle);
+
     _assertLadderCumulativeSimsCheap(
-      address(pool), bidOracle, askOracle, depth.asks, false, type(uint128).max, MAX_LOWEST_ROW_SIM_CHECKS
+      address(pool),
+      bidOracle,
+      askOracle,
+      referenceOracle,
+      depth.asks,
+      false,
+      type(uint128).max,
+      MAX_LOWEST_ROW_SIM_CHECKS
     );
     _assertLadderCumulativeSimsCheap(
-      address(pool), bidOracle, askOracle, depth.bids, true, 0, MAX_LOWEST_ROW_SIM_CHECKS
+      address(pool), bidOracle, askOracle, referenceOracle, depth.bids, true, 0, MAX_LOWEST_ROW_SIM_CHECKS
     );
 
     (uint256 refBid, uint256 refAsk) = _expectedBestBidAsk(address(pool), address(factory), address(oracle));
@@ -94,6 +105,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     address poolAddr,
     uint128 bidOracle,
     uint128 askOracle,
+    uint128 referenceOracle,
     MetricOmmPoolDataProvider.DepthLevel[] memory levels,
     bool zeroForOne,
     uint128 priceLimitX64,
@@ -106,7 +118,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     for (uint256 i; i < n && picked < maxLowestRowsToCheck; i++) {
       uint256 cum = levels[i].amountCumulative;
       if (cum == 0 || cum > maxAmt) continue;
-      _simulateAndAssertCumulative(poolAddr, bidOracle, askOracle, zeroForOne, priceLimitX64, cum);
+      _simulateAndAssertCumulative(poolAddr, bidOracle, askOracle, referenceOracle, zeroForOne, priceLimitX64, cum);
       unchecked {
         ++picked;
       }
@@ -123,7 +135,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
       }
     }
     if (haveBest) {
-      _simulateAndAssertCumulative(poolAddr, bidOracle, askOracle, zeroForOne, priceLimitX64, bestCum);
+      _simulateAndAssertCumulative(poolAddr, bidOracle, askOracle, referenceOracle, zeroForOne, priceLimitX64, bestCum);
     }
   }
 
@@ -131,14 +143,16 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     address poolAddr,
     uint128 bidOracle,
     uint128 askOracle,
+    uint128 referenceOracle,
     bool zeroForOne,
     uint128 priceLimitX64,
     uint256 cum
   ) internal {
     uint128 cumU128 = uint128(cum);
     int128 amountSpecified = -int128(int256(uint256(cumU128)));
-    (bool ok, int256 a0c, int256 a1c) =
-      _trySimulateSwapDeltas(poolAddr, zeroForOne, amountSpecified, bidOracle, askOracle, priceLimitX64);
+    (bool ok, int256 a0c, int256 a1c) = _trySimulateSwapDeltas(
+      poolAddr, zeroForOne, amountSpecified, bidOracle, askOracle, referenceOracle, priceLimitX64
+    );
     assertTrue(ok, "simulate did not return SimulateSwap payload");
 
     if (zeroForOne) {

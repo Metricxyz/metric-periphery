@@ -25,7 +25,8 @@ contract MetricOmmPoolStateView {
       uint104 _curPosInBin,
       int24 _curBinDistFromProvidedPrice,
       uint24 _spreadFeeE6,
-      uint24 _notionalFeeE8
+      uint24 _notionalFeeE8,
+      uint16 _bidAskRefAsymmetryX8
     )
   {
     return PoolStateLibrary._slot0(pool);

@@ -26,7 +26,7 @@ contract SwapAllowlistExtensionTest is Test {
   function test_revertsWhenSwapperNotAllowed() public {
     vm.prank(address(pool));
     vm.expectRevert(IMetricOmmPoolActions.NotAllowedToSwap.selector);
-    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, "");
+    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, 0, "");
   }
 
   function test_passesWhenSwapperAllowed() public {
@@ -34,7 +34,7 @@ contract SwapAllowlistExtensionTest is Test {
     extension.setAllowedToSwap(address(pool), swapper, true);
 
     vm.prank(address(pool));
-    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, "");
+    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, 0, "");
   }
 
   function test_onlyPoolAdminCanSetSwappers() public {
@@ -57,7 +57,7 @@ contract SwapAllowlistExtensionTest is Test {
     assertTrue(extension.isAllowedToSwap(address(pool), swapper));
 
     vm.prank(address(pool));
-    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, "");
+    extension.beforeSwap(swapper, address(0), false, 0, 0, 0, 0, 0, 0, "");
   }
 
   function test_onlyPoolAdminCanSetAllowAllSwappers() public {
