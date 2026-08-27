@@ -21,11 +21,12 @@ contract MetricOmmPoolStateView {
     view
     returns (
       uint8 _pauseLevel,
-      int8 _curBinIdx,
+      int16 _curBinIdx,
       uint104 _curPosInBin,
       int24 _curBinDistFromProvidedPrice,
       uint24 _spreadFeeE6,
-      uint24 _notionalFeeE8
+      uint24 _notionalFeeE8,
+      uint16 _bidAskRefAsymmetryX8
     )
   {
     return PoolStateLibrary._slot0(pool);
@@ -53,7 +54,7 @@ contract MetricOmmPoolStateView {
     return IMetricOmmPool(pool).getImmutables().immutablePriceProvider;
   }
 
-  function binState(address pool, int8 binIdx)
+  function binState(address pool, int16 binIdx)
     external
     view
     returns (
@@ -67,19 +68,19 @@ contract MetricOmmPoolStateView {
     return PoolStateLibrary._binState(pool, binIdx);
   }
 
-  function binStates(address pool, int8[] calldata binIdxs) external view returns (bytes32[] memory) {
+  function binStates(address pool, int16[] calldata binIdxs) external view returns (bytes32[] memory) {
     return PoolStateLibrary._multipleBinStates(pool, binIdxs);
   }
 
-  function binTotalShares(address pool, int8 binIdx) external view returns (uint256) {
+  function binTotalShares(address pool, int16 binIdx) external view returns (uint256) {
     return PoolStateLibrary._binTotalShares(pool, binIdx);
   }
 
-  function binTotalShares(address pool, int8[] calldata binIdxs) external view returns (bytes32[] memory) {
+  function binTotalShares(address pool, int16[] calldata binIdxs) external view returns (bytes32[] memory) {
     return PoolStateLibrary._multipleBinTotalShares(pool, binIdxs);
   }
 
-  function positionBinShares(address pool, address owner, uint80 salt, int8 bin) external view returns (uint256) {
+  function positionBinShares(address pool, address owner, uint80 salt, int16 bin) external view returns (uint256) {
     return PoolStateLibrary._positionBinShares(pool, owner, salt, bin);
   }
 

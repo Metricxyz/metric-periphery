@@ -29,11 +29,11 @@ interface IOracleValueStopLossExtension {
   struct PendingHighWatermarks {
     uint104 token0;
     uint104 token1;
-    int8 binIdx;
+    int16 binIdx;
     uint40 executeAfter;
   }
 
-  error OracleStopLossTriggered(int8 binIdx, bool isToken0Metric, uint256 currentMetric, uint256 threshold);
+  error OracleStopLossTriggered(int16 binIdx, bool isToken0Metric, uint256 currentMetric, uint256 threshold);
   error OracleStopLossDrawdownTooLarge(uint256 requested);
   error OracleStopLossDecayTooLarge(uint256 requested);
   error OracleStopLossAlreadyInitialized(address pool);
@@ -43,6 +43,8 @@ interface IOracleValueStopLossExtension {
   error OracleStopLossNoPendingTimelock(address pool);
   error OracleStopLossNoPendingHighWatermark(address pool);
   error OracleStopLossTimelockNotElapsed(uint256 executeAfter, uint256 currentTime);
+  /// @notice `block.timestamp + timelock` does not fit in `uint40` (would wrap a deadline into the past).
+  error OracleStopLossTimelockOverflow(uint256 executeAfter);
 
   event OracleStopLossTimelockProposed(address indexed pool, uint256 proposedTimelock, uint256 executeAfter);
   event OracleStopLossTimelockSet(address indexed pool, uint256 newTimelock);
@@ -54,16 +56,16 @@ interface IOracleValueStopLossExtension {
   event OracleStopLossDecaySet(address indexed pool, uint256 newDecayPerSecondE18);
   event OracleStopLossDecayCancelled(address indexed pool);
   event OracleStopLossHighWatermarkProposed(
-    address indexed pool, int8 binIdx, uint104 proposedHwmToken0, uint104 proposedHwmToken1, uint256 executeAfter
+    address indexed pool, int16 binIdx, uint104 proposedHwmToken0, uint104 proposedHwmToken1, uint256 executeAfter
   );
   event OracleStopLossHighWatermarkUpdated(
-    address indexed pool, int8 binIdx, uint104 newHwmToken0, uint104 newHwmToken1
+    address indexed pool, int16 binIdx, uint104 newHwmToken0, uint104 newHwmToken1
   );
   event OracleStopLossHighWatermarkCancelled(address indexed pool);
 
   function initialize(address pool, bytes calldata data) external returns (bytes4);
 
-  function currentHighWatermarks(address pool, int8 binIdx) external view returns (uint256 hwm0, uint256 hwm1);
+  function currentHighWatermarks(address pool, int16 binIdx) external view returns (uint256 hwm0, uint256 hwm1);
 
   function proposeOracleStopLossTimelock(address pool, uint40 newTimelock) external;
 
@@ -83,7 +85,7 @@ interface IOracleValueStopLossExtension {
 
   function cancelOracleStopLossDecay(address pool) external;
 
-  function proposeOracleStopLossHighWatermarks(address pool, int8 binIdx, uint104 newHwmToken0, uint104 newHwmToken1)
+  function proposeOracleStopLossHighWatermarks(address pool, int16 binIdx, uint104 newHwmToken0, uint104 newHwmToken1)
     external;
 
   function executeOracleStopLossHighWatermarks(address pool) external;

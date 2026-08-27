@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
-import {SwapMath} from "@metric-core/libraries/SwapMath.sol";
 import {IPriceVelocityGuardExtension} from "../interfaces/extensions/IPriceVelocityGuardExtension.sol";
 import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 
@@ -46,16 +45,15 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
     int128,
     uint128,
     uint256,
-    uint128 bidPriceX64,
-    uint128 askPriceX64,
+    uint128,
+    uint128,
+    uint128 referencePriceX64,
     bytes calldata
   ) external override returns (bytes4) {
     // onlyPool omitted: state is keyed by msg.sender, so a non-pool caller cannot affect another pool.
     address pool_ = msg.sender;
-    (uint256 midPriceX64,) = SwapMath.midAndSpreadFeeX64FromBidAsk(uint256(bidPriceX64), uint256(askPriceX64));
-    // casting to `uint128` is safe: geometric mid of two uint128 bid/ask quotes fits uint128 (same bound as pool)
-    // forge-lint: disable-next-line(unsafe-typecast)
-    uint128 midPrice = uint128(midPriceX64);
+    // Pool passes `referencePriceX64` as the mid/price-path anchor from `getQuote()`.
+    uint128 midPrice = referencePriceX64;
 
     PriceVelocityState storage s = priceVelocityState[pool_];
     uint128 anchorMid = s.anchorMidPriceX64;

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
+
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 // forge-lint: disable-start(unsafe-typecast)
 
 import {Test} from "forge-std/Test.sol";
@@ -36,8 +38,8 @@ contract MockPriceProviderLPH is IPriceProvider {
     quoteToken = _quoteToken;
   }
 
-  function getBidAndAskPrice() external returns (uint128, uint128) {
-    return (bidPrice, askPrice);
+  function getQuote() external view returns (uint128 bid, uint128 ask, uint128 referencePrice) {
+    return (bidPrice, askPrice, uint128(Math.sqrt(uint256(bidPrice) * uint256(askPrice))));
   }
 
   function token0() external view returns (address) {
@@ -128,17 +130,14 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       0,
       nnStates,
       negStates,
-      0
+      0,
+      type(uint16).max
     );
 
     factoryStub.registerPool(
       address(pool),
       PoolFeeConfig({
-        protocolSpreadFeeE6: PROTOCOL_FEE,
-        adminSpreadFeeE6: ADMIN_FEE,
-        protocolNotionalFeeE8: 0,
-        adminNotionalFeeE8: 0,
-        protocolFeeOnAdminNotionalFeeE6: 0
+        protocolSpreadFeeE6: PROTOCOL_FEE, adminSpreadFeeE6: ADMIN_FEE, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0
       }),
       makeAddr("adminFeeDest"),
       address(this)
@@ -182,9 +181,9 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     returns (IMetricOmmPoolLiquidityAdder.BinPositionBounds memory)
   {
     return IMetricOmmPoolLiquidityAdder.BinPositionBounds({
-      minimalCurBin: type(int8).min,
+      minimalCurBin: type(int16).min,
       minimalPosition: 0,
-      maximalCurBin: type(int8).max,
+      maximalCurBin: type(int16).max,
       maximalPosition: type(uint104).max
     });
   }
@@ -231,7 +230,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       address(pool), bob, 1, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
     );
 
-    uint256 bobShares = stateView.positionBinShares(address(pool), bob, 1, int8(4));
+    uint256 bobShares = stateView.positionBinShares(address(pool), bob, 1, int16(4));
     assertGt(bobShares, 0);
   }
 
@@ -269,7 +268,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       address(pool), bob, 12, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
     );
 
-    uint256 bobShares = stateView.positionBinShares(address(pool), bob, 12, int8(4));
+    uint256 bobShares = stateView.positionBinShares(address(pool), bob, 12, int16(4));
     assertGt(bobShares, 0);
     assertLt(weth.balanceOf(alice), aliceWethBefore);
     assertEq(weth.balanceOf(bob), bobWethBefore);
@@ -283,7 +282,7 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
       address(pool), 9, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
     );
 
-    uint256 aliceShares = stateView.positionBinShares(address(pool), alice, 9, int8(4));
+    uint256 aliceShares = stateView.positionBinShares(address(pool), alice, 9, int16(4));
     assertGt(aliceShares, 0);
   }
 
@@ -299,14 +298,38 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     assertGt(a0 + a1, 0);
   }
 
+  /// @dev Odd tight caps previously hit MaxAmountExceeded when pay-path ceil exceeded the probe scale (#3187).
+  function test_weighted_oddTightCapsDoNotRevertOnCeilRounding() public {
+    LiquidityDelta memory w;
+    w.binIdxs = new int256[](3);
+    w.shares = new uint256[](3);
+    w.binIdxs[0] = 2;
+    w.binIdxs[1] = 3;
+    w.binIdxs[2] = 4;
+    w.shares[0] = 1_000_000;
+    w.shares[1] = 1_000_000;
+    w.shares[2] = 1_000_000;
+
+    uint256 oddCap0 = 100_031;
+    uint256 oddCap1 = 100_033;
+
+    vm.prank(alice);
+    (uint256 a0, uint256 a1) =
+      helper.addLiquidityWeighted(address(pool), alice, 21, w, oddCap0, oddCap1, _unconstrainedBinPositionBounds(), "");
+
+    assertLe(a0, oddCap0);
+    assertLe(a1, oddCap1);
+    assertGt(a0 + a1, 0);
+  }
+
   function test_weighted_twoBins_keepsRatioAfterScale() public {
     LiquidityDelta memory w = _deltaTwoBins(3, 400_000, 4, 100_000);
 
     vm.prank(alice);
     helper.addLiquidityWeighted(address(pool), alice, 3, w, 30_000, 30_000, _unconstrainedBinPositionBounds(), "");
 
-    uint256 s3 = stateView.positionBinShares(address(pool), alice, 3, int8(3));
-    uint256 s4 = stateView.positionBinShares(address(pool), alice, 3, int8(4));
+    uint256 s3 = stateView.positionBinShares(address(pool), alice, 3, int16(3));
+    uint256 s4 = stateView.positionBinShares(address(pool), alice, 3, int16(4));
     assertGt(s3, 0);
     assertGt(s4, 0);
     assertApproxEqRel(s3, s4 * 4, 0.02e18);
@@ -329,16 +352,16 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
     vm.prank(alice);
     helper.addLiquidityWeighted(address(pool), bob, 5, w, cap, cap, _unconstrainedBinPositionBounds(), "");
 
-    uint256 bobShares = stateView.positionBinShares(address(pool), bob, 5, int8(4));
+    uint256 bobShares = stateView.positionBinShares(address(pool), bob, 5, int16(4));
     assertGt(bobShares, 0);
   }
 
   function test_weighted_revertsBinPositionOutOfBounds() public {
     LiquidityDelta memory w = _deltaAbovePrice(4, 100_000);
-    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(address(pool));
+    (, int16 curBinIdx, uint104 curPosInBin,,,,) = PoolStateLibrary._slot0(address(pool));
 
     IMetricOmmPoolLiquidityAdder.BinPositionBounds memory bounds = IMetricOmmPoolLiquidityAdder.BinPositionBounds({
-      minimalCurBin: type(int8).min, minimalPosition: 0, maximalCurBin: int8(-1), maximalPosition: type(uint104).max
+      minimalCurBin: type(int16).min, minimalPosition: 0, maximalCurBin: int16(-1), maximalPosition: type(uint104).max
     });
 
     vm.prank(alice);
@@ -358,12 +381,12 @@ contract MetricOmmPoolLiquidityAdderTest is Test, PoolInitPreprocessor {
 
   function test_weighted_revertsWhenMinimalPositionTooHigh() public {
     LiquidityDelta memory w = _deltaAbovePrice(4, 100_000);
-    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(address(pool));
+    (, int16 curBinIdx, uint104 curPosInBin,,,,) = PoolStateLibrary._slot0(address(pool));
 
     IMetricOmmPoolLiquidityAdder.BinPositionBounds memory bounds = IMetricOmmPoolLiquidityAdder.BinPositionBounds({
       minimalCurBin: curBinIdx,
       minimalPosition: curPosInBin + 1,
-      maximalCurBin: type(int8).max,
+      maximalCurBin: type(int16).max,
       maximalPosition: type(uint104).max
     });
 

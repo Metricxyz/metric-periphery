@@ -9,12 +9,12 @@ import {MetricOmmPoolLiquidityAdderTest} from "./MetricOmmPoolLiquidityAdder.t.s
 
 bytes4 constant ADD_LIQUIDITY_EXACT_SHARES_WITH_OWNER = bytes4(
   keccak256(
-    "addLiquidityExactShares(address,address,uint80,(int256[],uint256[]),uint256,uint256,(int8,uint104,int8,uint104),bytes)"
+    "addLiquidityExactShares(address,address,uint80,(int256[],uint256[]),uint256,uint256,(int16,uint104,int16,uint104),bytes)"
   )
 );
 bytes4 constant ADD_LIQUIDITY_WEIGHTED_WITH_OWNER = bytes4(
   keccak256(
-    "addLiquidityWeighted(address,address,uint80,(int256[],uint256[]),uint256,uint256,(int8,uint104,int8,uint104),bytes)"
+    "addLiquidityWeighted(address,address,uint80,(int256[],uint256[]),uint256,uint256,(int16,uint104,int16,uint104),bytes)"
   )
 );
 
@@ -79,7 +79,7 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     );
     helper.multicall{value: need0}(calls);
 
-    assertGt(stateView.positionBinShares(address(pool), alice, 20, int8(4)), 0, "shares minted");
+    assertGt(stateView.positionBinShares(address(pool), alice, 20, int16(4)), 0, "shares minted");
     assertEq(aliceEthBefore - alice.balance, need0, "alice eth spent");
     assertEq(aliceWethBefore, weth.balanceOf(alice), "alice weth unchanged");
     _assertAdderEmpty();
@@ -103,7 +103,7 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
       address(pool), alice, 22, d, type(uint256).max, type(uint256).max, _unconstrainedBinPositionBounds(), ""
     );
 
-    assertGt(stateView.positionBinShares(address(pool), alice, 22, int8(4)), 0, "shares minted");
+    assertGt(stateView.positionBinShares(address(pool), alice, 22, int16(4)), 0, "shares minted");
     assertEq(aliceEthBefore - alice.balance, nativePart, "alice native spent");
     assertEq(aliceWethBefore - weth.balanceOf(alice), wethPart, "alice weth spent");
     assertEq(need1, 0, "token1 leg unused in this fixture");
@@ -131,7 +131,7 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     calls[1] = abi.encodeWithSelector(helper.refundETH.selector);
     helper.multicall{value: msgValue}(calls);
 
-    assertGt(stateView.positionBinShares(address(pool), alice, 23, int8(4)), 0, "shares minted");
+    assertGt(stateView.positionBinShares(address(pool), alice, 23, int16(4)), 0, "shares minted");
     assertLt(alice.balance, aliceEthBefore, "alice paid for liquidity");
     _assertAdderEmpty();
   }
@@ -155,8 +155,10 @@ contract MetricOmmPoolLiquidityAdderNativeTest is MetricOmmPoolLiquidityAdderTes
     );
     helper.multicall{value: 50_000}(calls);
 
-    assertGt(stateView.positionBinShares(address(pool), alice, 24, int8(4)), 0, "shares minted");
+    assertGt(stateView.positionBinShares(address(pool), alice, 24, int16(4)), 0, "shares minted");
     assertLe(aliceEthBefore - alice.balance, 50_000, "alice eth spent");
-    _assertAdderEmpty();
+    // Weighted scale may leave up to 1 wei of unused msg.value when caps are haircut for ceil-rounding.
+    assertLe(address(helper).balance, 1, "adder eth");
+    assertEq(weth.balanceOf(address(helper)), 0, "adder weth");
   }
 }

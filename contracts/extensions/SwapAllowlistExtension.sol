@@ -28,12 +28,18 @@ contract SwapAllowlistExtension is BaseMetricExtension, ISwapAllowlistExtension 
     return allowAllSwappers[pool_] || allowedSwapper[pool_][swapper];
   }
 
-  function beforeSwap(address sender, address, bool, int128, uint128, uint256, uint128, uint128, bytes calldata)
-    external
-    view
-    override
-    returns (bytes4)
-  {
+  function beforeSwap(
+    address sender,
+    address,
+    bool,
+    int128,
+    uint128,
+    uint256,
+    uint128,
+    uint128,
+    uint128,
+    bytes calldata
+  ) external view override returns (bytes4) {
     // onlyPool omitted: state is keyed by msg.sender, so a non-pool caller cannot affect another pool.
     if (!allowAllSwappers[msg.sender] && !allowedSwapper[msg.sender][sender]) {
       revert IMetricOmmPoolActions.NotAllowedToSwap();

@@ -78,7 +78,7 @@ abstract contract BaseMetricExtension is IMetricOmmExtensions {
     revert ExtensionNotImplemented();
   }
 
-  function beforeSwap(address, address, bool, int128, uint128, uint256, uint128, uint128, bytes calldata)
+  function beforeSwap(address, address, bool, int128, uint128, uint256, uint128, uint128, uint128, bytes calldata)
     external
     virtual
     onlyPool
@@ -95,6 +95,7 @@ abstract contract BaseMetricExtension is IMetricOmmExtensions {
     uint128,
     uint256,
     uint256,
+    uint128,
     uint128,
     uint128,
     int128,

@@ -205,6 +205,10 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     askPrices[0] = TEST_ASK_X64;
     askPrices[1] = TEST_ASK_X64;
 
+    uint128[] memory refPrices = new uint128[](2);
+    refPrices[0] = TEST_BID_X64; // bid≈ask so any in-range ref works; use bid
+    refPrices[1] = TEST_BID_X64;
+
     (uint256 quotedIn, uint256 quotedOut) = swapQuoter.quoteHypotheticalExactInput(
       IMetricOmmSwapQuoter.QuoteHypotheticalExactInputParams({
         pools: pools,
@@ -212,7 +216,8 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
         zeroForOneBitMap: 3,
         amountIn: amountIn,
         bidPricesX64: bidPrices,
-        askPricesX64: askPrices
+        askPricesX64: askPrices,
+        referencePricesX64: refPrices
       })
     );
 
