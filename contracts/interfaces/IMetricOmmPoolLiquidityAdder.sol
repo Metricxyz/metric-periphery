@@ -19,12 +19,12 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMulticall, IPeripheryPayments {
   // ============ Types ============
 
-  /// @notice Allowed slot0 bin-position range for an add. Use type(int8).min / type(int8).max and type(uint104).max
+  /// @notice Allowed slot0 bin-position range for an add. Use type(int16).min / type(int16).max and type(uint104).max
   ///         to leave a side unconstrained.
   struct BinPositionBounds {
-    int8 minimalCurBin;
+    int16 minimalCurBin;
     uint104 minimalPosition;
-    int8 maximalCurBin;
+    int16 maximalCurBin;
     uint104 maximalPosition;
   }
 
@@ -77,11 +77,11 @@ interface IMetricOmmPoolLiquidityAdder is IMetricOmmModifyLiquidityCallback, IMu
   /// @param maximalCurBin Caller upper bound on curBinIdx.
   /// @param maximalPosition Maximum curPosInBin when curBinIdx equals maximalCurBin.
   error BinPositionOutOfBounds(
-    int8 curBinIdx,
+    int16 curBinIdx,
     uint104 curPosInBin,
-    int8 minimalCurBin,
+    int16 minimalCurBin,
     uint104 minimalPosition,
-    int8 maximalCurBin,
+    int16 maximalCurBin,
     uint104 maximalPosition
   );
 

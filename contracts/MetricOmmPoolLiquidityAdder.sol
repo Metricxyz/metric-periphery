@@ -234,11 +234,16 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     pure
     returns (LiquidityDelta memory out)
   {
-    uint256 scaleWad0 = need0 == 0 ? type(uint256).max : Math.mulDiv(max0, WAD, need0);
-    uint256 scaleWad1 = need1 == 0 ? type(uint256).max : Math.mulDiv(max1, WAD, need1);
+    uint256 n = w.binIdxs.length;
+    // Reserve up to one wei of headroom per bin so the paying `addLiquidity` ceil-rounding cannot exceed the
+    // probe-based caps (Sherlock #3187). Caps at or below `n` stay unchanged (tiny deposits).
+    uint256 adjMax0 = max0 > n ? max0 - n : max0;
+    uint256 adjMax1 = max1 > n ? max1 - n : max1;
+
+    uint256 scaleWad0 = need0 == 0 ? type(uint256).max : Math.mulDiv(adjMax0, WAD, need0);
+    uint256 scaleWad1 = need1 == 0 ? type(uint256).max : Math.mulDiv(adjMax1, WAD, need1);
     uint256 scaleWad = scaleWad0 < scaleWad1 ? scaleWad0 : scaleWad1;
 
-    uint256 n = w.binIdxs.length;
     out.binIdxs = new int256[](n);
     out.shares = new uint256[](n);
     for (uint256 i; i < n; i++) {
@@ -277,7 +282,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
       );
     }
 
-    (, int8 curBinIdx, uint104 curPosInBin,,,) = PoolStateLibrary._slot0(pool);
+    (, int16 curBinIdx, uint104 curPosInBin,,,,) = PoolStateLibrary._slot0(pool);
 
     int256 curBin = curBinIdx;
     if (curBin < bounds.minimalCurBin || curBin > bounds.maximalCurBin) {

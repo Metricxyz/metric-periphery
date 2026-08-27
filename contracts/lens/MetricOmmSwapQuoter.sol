@@ -135,10 +135,11 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 amountIn,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
-    uint128 askPriceX64
+    uint128 askPriceX64,
+    uint128 referencePriceX64
   ) external returns (uint256, uint256) {
     return quoteHypotheticalExactInputSingle(
-      pool, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, hex""
+      pool, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
     );
   }
 
@@ -151,6 +152,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128 referencePriceX64,
     bytes memory extensionData
   ) public virtual returns (uint256, uint256) {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
@@ -162,6 +164,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
       priceLimitX64,
       bidPriceX64,
       askPriceX64,
+      referencePriceX64,
       extensionData
     );
     return MetricOmmSwapResults.extractAmountInAndOut(zeroForOne, amount0Delta, amount1Delta);
@@ -174,10 +177,11 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 amountOutDesired,
     uint128 priceLimitX64,
     uint128 bidPriceX64,
-    uint128 askPriceX64
+    uint128 askPriceX64,
+    uint128 referencePriceX64
   ) external returns (uint256, uint256) {
     return quoteHypotheticalExactOutputSingle(
-      pool, msg.sender, zeroForOne, amountOutDesired, priceLimitX64, bidPriceX64, askPriceX64, hex""
+      pool, msg.sender, zeroForOne, amountOutDesired, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
     );
   }
 
@@ -190,6 +194,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128 referencePriceX64,
     bytes memory extensionData
   ) public virtual returns (uint256, uint256) {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
@@ -201,6 +206,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
       priceLimitX64,
       bidPriceX64,
       askPriceX64,
+      referencePriceX64,
       extensionData
     );
     return MetricOmmSwapResults.extractAmountInAndOut(zeroForOne, amount0Delta, amount1Delta);
@@ -214,7 +220,9 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     returns (uint256 totalIn, uint256 totalOut)
   {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);
-    _validateHypotheticalPrices(params.pools.length, params.bidPricesX64, params.askPricesX64);
+    _validateHypotheticalPrices(
+      params.pools.length, params.bidPricesX64, params.askPricesX64, params.referencePricesX64
+    );
 
     uint256 last = params.pools.length - 1;
     uint128 amount = params.amountIn;
@@ -229,6 +237,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         MetricOmmSwapPath.openLimit(zeroForOne),
         params.bidPricesX64[i],
         params.askPricesX64[i],
+        params.referencePricesX64[i],
         params.extensionDatas[i]
       );
       if (hopAmountIn < amount) revert InvalidInputAmountAtHop(uint8(i), hopAmountIn, amount);
@@ -245,7 +254,9 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     returns (uint256 amountIn, uint256 amountOut)
   {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);
-    _validateHypotheticalPrices(params.pools.length, params.bidPricesX64, params.askPricesX64);
+    _validateHypotheticalPrices(
+      params.pools.length, params.bidPricesX64, params.askPricesX64, params.referencePricesX64
+    );
 
     uint256 last = params.pools.length - 1;
     uint128 amount = params.amountOut;
@@ -262,6 +273,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         MetricOmmSwapPath.openLimit(zeroForOne),
         params.bidPricesX64[hop],
         params.askPricesX64[hop],
+        params.referencePricesX64[hop],
         params.extensionDatas[hop]
       );
       if (hopAmountOut != amount) revert InvalidOutputAmountAtHop(uint8(hop), hopAmountOut, amount);
@@ -314,11 +326,19 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 priceLimitX64,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128 referencePriceX64,
     bytes memory extensionData
   ) internal returns (int128 amount0Delta, int128 amount1Delta) {
     try IMetricOmmPool(pool)
       .simulateSwapAndRevert(
-        recipient, zeroForOne, amountSpecified, priceLimitX64, bidPriceX64, askPriceX64, extensionData
+        recipient,
+        zeroForOne,
+        amountSpecified,
+        priceLimitX64,
+        bidPriceX64,
+        askPriceX64,
+        referencePriceX64,
+        extensionData
       ) {
       revert HypotheticalQuoteDidNotRevert();
     } catch (bytes memory reason) {
@@ -345,9 +365,11 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   function _validateHypotheticalPrices(
     uint256 poolCount,
     uint128[] calldata bidPricesX64,
-    uint128[] calldata askPricesX64
+    uint128[] calldata askPricesX64,
+    uint128[] calldata referencePricesX64
   ) internal pure {
-    if (bidPricesX64.length != poolCount || askPricesX64.length != poolCount) {
+    if (bidPricesX64.length != poolCount || askPricesX64.length != poolCount || referencePricesX64.length != poolCount)
+    {
       revert InvalidPath();
     }
   }

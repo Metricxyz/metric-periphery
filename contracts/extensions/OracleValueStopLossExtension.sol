@@ -14,7 +14,17 @@ import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 /// @notice Tracks per-bin value per share in token0 and token1 terms at bid/ask oracle marks,
 ///         against decaying high watermarks. Drawdown and decay changes are timelocked so LPs
 ///         can react; monitor at least as often as the timelock or trust the pool admin.
-/// @dev Value formulas (Q64.64 price = token1 per token0), per-share in bin scaled units:
+/// @dev Lifecycle (intentional):
+///      - Watermarks are not seeded on liquidity adds. They initialize on the first swap that
+///        touches a live bin (`hwm == 0` ratchets to the live metric). That first trade is
+///        therefore not drawdown-protected.
+///      - Watermarks are not cleared on removeLiquidity. Empty bins only reset to zero when a
+///        later swap iterates them (`totalShares == 0`). Until that crossing, a remint into a
+///        previously emptied bin keeps the old HWM (can freeze swaps). After an empty crossing
+///        resets HWM to zero, the next trade on a reminted bin is again unprotected like a
+///        first-touch seed.
+///
+///      Value formulas (Q64.64 price = token1 per token0), per-share in bin scaled units:
 ///
 ///      metricToken0 = t0*SCALE/shares + (t1 * 2^64 / bid) * SCALE / shares
 ///      metricToken1 = (t0 * ask / 2^64) * SCALE / shares + t1*SCALE/shares
@@ -38,7 +48,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   mapping(address pool => PoolStopLossConfig) public oracleStopLossConfig;
   mapping(address pool => PoolStopLossSchedule) public poolStopLossSchedule;
   mapping(address pool => PendingHighWatermarks) public pendingHighWatermark;
-  mapping(address pool => mapping(int8 binIdx => BinHighWatermarks)) public highWatermarks;
+  mapping(address pool => mapping(int16 binIdx => BinHighWatermarks)) public highWatermarks;
 
   constructor(address factory_) BaseMetricExtension(factory_) {}
 
@@ -69,7 +79,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   }
 
   /// @notice Current (decayed) watermarks — what the next check compares against.
-  function currentHighWatermarks(address pool, int8 binIdx) external view returns (uint256 hwm0, uint256 hwm1) {
+  function currentHighWatermarks(address pool, int16 binIdx) external view returns (uint256 hwm0, uint256 hwm1) {
     BinHighWatermarks memory hwm = highWatermarks[pool][binIdx];
     uint256 rate = oracleStopLossConfig[pool].decayPerSecondE18;
     uint256 dt = block.timestamp - hwm.lastDecayTs;
@@ -156,7 +166,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   }
 
   /// @notice Propose per-bin high watermarks; applied after the pool timelock via execute.
-  function proposeOracleStopLossHighWatermarks(address pool_, int8 binIdx, uint104 newHwmToken0, uint104 newHwmToken1)
+  function proposeOracleStopLossHighWatermarks(address pool_, int16 binIdx, uint104 newHwmToken0, uint104 newHwmToken1)
     external
     onlyPoolAdmin(pool_)
   {
@@ -195,6 +205,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     uint256 packedSlot0Final,
     uint128 bidPriceX64,
     uint128 askPriceX64,
+    uint128,
     int128,
     int128,
     uint256,
@@ -222,14 +233,14 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     if (minShares == 0) minShares = 1;
     PoolSlot0 memory s0 = Slot0Library.unpack(packedSlot0Initial);
     PoolSlot0 memory s1 = Slot0Library.unpack(packedSlot0Final);
-    int8 lo = s0.curBinIdx < s1.curBinIdx ? s0.curBinIdx : s1.curBinIdx;
-    int8 hi = s0.curBinIdx > s1.curBinIdx ? s0.curBinIdx : s1.curBinIdx;
+    int16 lo = s0.curBinIdx < s1.curBinIdx ? s0.curBinIdx : s1.curBinIdx;
+    int16 hi = s0.curBinIdx > s1.curBinIdx ? s0.curBinIdx : s1.curBinIdx;
     // forge-lint: disable-next-line(unsafe-typecast)
     uint256 count = uint256(int256(hi) - int256(lo) + 1);
-    int8[] memory binIdxs = new int8[](count);
+    int16[] memory binIdxs = new int16[](count);
     for (uint256 i = 0; i < count; i++) {
       // forge-lint: disable-next-line(unsafe-typecast)
-      binIdxs[i] = int8(int256(lo) + int256(i));
+      binIdxs[i] = int16(int256(lo) + int256(i));
     }
     bytes32[] memory states = PoolStateLibrary._multipleBinStates(pool_, binIdxs);
     bytes32[] memory shares = PoolStateLibrary._multipleBinTotalShares(pool_, binIdxs);
@@ -237,7 +248,11 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
     uint256 decayRate = cfg.decayPerSecondE18;
     for (uint256 i = 0; i < count; i++) {
       uint256 totalShares = PoolStateLibrary._decodeBinTotalShares(shares[i]);
-      if (totalShares == 0) continue;
+      if (totalShares == 0) {
+        // Reset only on empty-bin crossing in afterSwap (not on removeLiquidity).
+        delete highWatermarks[pool_][binIdxs[i]];
+        continue;
+      }
       (uint104 t0, uint104 t1,,,) = PoolStateLibrary._decodeBinState(states[i]);
       (uint256 metricT0, uint256 metricT1) = _metrics(t0, t1, totalShares, minShares, bidPriceX64, askPriceX64);
       _checkAndUpdateWatermarks(pool_, binIdxs[i], metricT0, metricT1, floorMultiplier, decayRate, zeroForOne);
@@ -263,7 +278,7 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
 
   function _checkAndUpdateWatermarks(
     address pool_,
-    int8 binIdx,
+    int16 binIdx,
     uint256 metricT0,
     uint256 metricT1,
     uint256 floorMultiplier,
@@ -302,8 +317,11 @@ contract OracleValueStopLossExtension is BaseMetricExtension, IOracleValueStopLo
   }
 
   function _afterTimelock(address pool_) private view returns (uint40) {
+    // Compute in uint256 so a huge timelock cannot truncate into a past `executeAfter` (Sherlock #2989).
+    uint256 executeAfter = block.timestamp + uint256(oracleStopLossConfig[pool_].timelock);
+    if (executeAfter > type(uint40).max) revert OracleStopLossTimelockOverflow(executeAfter);
     // forge-lint: disable-next-line(unsafe-typecast)
-    return uint40(block.timestamp) + oracleStopLossConfig[pool_].timelock;
+    return uint40(executeAfter);
   }
 
   function _requireElapsed(uint40 executeAfter) private view {

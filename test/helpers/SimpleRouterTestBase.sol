@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+
 import {Test} from "forge-std/Test.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {PoolExtensions, ExtensionOrders} from "@metric-core/types/PoolExtensionsConfig.sol";
@@ -31,8 +33,8 @@ contract MockPriceProviderRouter is IPriceProvider {
     quoteToken = _quoteToken;
   }
 
-  function getBidAndAskPrice() external returns (uint128, uint128) {
-    return (bidPrice, askPrice);
+  function getQuote() external view returns (uint128 bid, uint128 ask, uint128 referencePrice) {
+    return (bidPrice, askPrice, uint128(Math.sqrt(uint256(bidPrice) * uint256(askPrice))));
   }
 
   function token0() external view returns (address) {
@@ -159,17 +161,14 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
       0,
       nnStates,
       negStates,
-      0
+      0,
+      type(uint16).max
     );
 
     factoryStub.registerPool(
       address(deployed),
       PoolFeeConfig({
-        protocolSpreadFeeE6: PROTOCOL_FEE,
-        adminSpreadFeeE6: ADMIN_FEE,
-        protocolNotionalFeeE8: 0,
-        adminNotionalFeeE8: 0,
-        protocolFeeOnAdminNotionalFeeE6: 0
+        protocolSpreadFeeE6: PROTOCOL_FEE, adminSpreadFeeE6: ADMIN_FEE, protocolNotionalFeeE8: 0, adminNotionalFeeE8: 0
       }),
       makeAddr("adminFeeDest"),
       address(this)

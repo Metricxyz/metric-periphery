@@ -57,7 +57,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
   function _liquidityDepthVsSimulateScenario(uint256 seed, uint8 maxBinsPerSide) internal {
     _randomWalkSwaps(router, address(pool), 18, 18, seed, 1);
 
-    (uint128 bidOracle, uint128 askOracle) = oracle.getBidAndAskPrice();
+    (uint128 bidOracle, uint128 askOracle,) = oracle.getQuote();
     MetricOmmPoolDataProvider.LiquidityDepth memory depth = helper.getLiquidityDepth(address(pool), maxBinsPerSide);
 
     uint256 runningAsk;

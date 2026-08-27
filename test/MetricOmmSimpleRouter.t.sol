@@ -860,7 +860,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 priceLimit = _priceLimit(zeroForOne);
 
     try quoter.quoteHypotheticalExactInputSingle(
-      address(pool), zeroForOne, amountIn, priceLimit, TEST_BID_X64, TEST_ASK_X64
+      address(pool), zeroForOne, amountIn, priceLimit, TEST_BID_X64, TEST_ASK_X64, TEST_BID_X64
     ) returns (
       uint256 quotedIn, uint256 quotedOut
     ) {
@@ -898,7 +898,7 @@ contract MetricOmmSimpleRouterTest is SimpleRouterTestBase {
     uint128 priceLimit = _priceLimit(zeroForOne);
 
     try quoter.quoteHypotheticalExactOutputSingle(
-      address(pool), zeroForOne, amountOut, priceLimit, TEST_BID_X64, TEST_ASK_X64
+      address(pool), zeroForOne, amountOut, priceLimit, TEST_BID_X64, TEST_ASK_X64, TEST_BID_X64
     ) returns (
       uint256 quotedIn, uint256 quotedOut
     ) {

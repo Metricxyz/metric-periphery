@@ -70,7 +70,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     return bytes32(packed);
   }
 
-  function _binStateSlot(int8 binIdx) internal pure returns (bytes32 slot) {
+  function _binStateSlot(int16 binIdx) internal pure returns (bytes32 slot) {
     uint256 baseSlot = PoolStateLibrary.MAPPING_BIN_STATES;
     assembly {
       mstore(0x00, binIdx)
@@ -79,7 +79,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     }
   }
 
-  function _binTotalSharesSlot(int8 binIdx) internal pure returns (bytes32 slot) {
+  function _binTotalSharesSlot(int16 binIdx) internal pure returns (bytes32 slot) {
     uint256 baseSlot = PoolStateLibrary.MAPPING_BIN_TOTAL_SHARES;
     assembly {
       mstore(0x00, binIdx)
@@ -88,19 +88,32 @@ contract OracleValueStopLossSubExtensionTest is Test {
     }
   }
 
-  function _storeBin(int8 binIdx, uint104 t0, uint104 t1, uint256 totalShares) internal {
+  function _storeBin(int16 binIdx, uint104 t0, uint104 t1, uint256 totalShares) internal {
     vm.store(address(mockPool), _binStateSlot(binIdx), _packBinState(t0, t1));
     vm.store(address(mockPool), _binTotalSharesSlot(binIdx), bytes32(totalShares));
   }
 
-  function _packSlot0(int8 binIdx) internal pure returns (uint256) {
-    return Slot0Library.pack(0, binIdx, 0, 0, 0, 0);
+  function _packSlot0(int16 binIdx) internal pure returns (uint256) {
+    return Slot0Library.pack(0, binIdx, 0, 0, 0, 0, 0);
   }
 
-  function _exposeStopLoss(int8 loBin, int8 hiBin, uint128 priceX64, bool zeroForOne) internal {
+  function _exposeStopLoss(int16 loBin, int16 hiBin, uint128 priceX64, bool zeroForOne) internal {
     vm.prank(address(mockPool));
     extension.afterSwap(
-      address(0), address(0), zeroForOne, 0, 0, _packSlot0(loBin), _packSlot0(hiBin), priceX64, priceX64, 0, 0, 0, ""
+      address(0),
+      address(0),
+      zeroForOne,
+      0,
+      0,
+      _packSlot0(loBin),
+      _packSlot0(hiBin),
+      priceX64,
+      priceX64,
+      priceX64,
+      0,
+      0,
+      0,
+      ""
     );
   }
 
@@ -138,7 +151,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
     extension.executeOracleStopLossDecay(address(mockPool));
   }
 
-  function _proposeAndExecuteWatermarks(int8 binIdx, uint104 t0, uint104 t1) internal {
+  function _proposeAndExecuteWatermarks(int16 binIdx, uint104 t0, uint104 t1) internal {
     extension.proposeOracleStopLossHighWatermarks(address(mockPool), binIdx, t0, t1);
     extension.executeOracleStopLossHighWatermarks(address(mockPool));
   }
@@ -362,7 +375,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
     vm.expectRevert(
       abi.encodeWithSelector(
-        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int8(0), true, m0, threshold
+        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int16(0), true, m0, threshold
       )
     );
     _exposeStopLoss(0, 0, highPrice, true);
@@ -391,7 +404,7 @@ contract OracleValueStopLossSubExtensionTest is Test {
 
     vm.expectRevert(
       abi.encodeWithSelector(
-        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int8(0), false, m1, threshold
+        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int16(0), false, m1, threshold
       )
     );
     _exposeStopLoss(0, 0, lowPrice, false);
@@ -706,5 +719,65 @@ contract OracleValueStopLossSubExtensionTest is Test {
     // Value leak exactly at 10% boundary — both metrics at threshold, no revert.
     _storeBin(0, 900, 900, BIN_SHARES);
     _exposeStopLoss(0, 0, price, false);
+  }
+
+  function test_emptyBinCrossingResetsHwm() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 10_000, 10_000, BIN_SHARES);
+    _storeBin(1, 1000, 1000, BIN_SHARES);
+    _configure(100_000, 0);
+    _exposeStopLoss(0, 0, price, true);
+    (uint256 hwm0,) = extension.currentHighWatermarks(address(mockPool), 0);
+    assertGt(hwm0, 0);
+
+    _storeBin(0, 0, 0, 0);
+    // Swap range includes the emptied bin → HWM reset on empty crossing.
+    _exposeStopLoss(0, 1, price, true);
+    (hwm0,) = extension.currentHighWatermarks(address(mockPool), 0);
+    assertEq(hwm0, 0);
+
+    // Remint then first touch re-seeds (unprotected); subsequent touch is protected.
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+    _exposeStopLoss(0, 0, price, true);
+    (hwm0,) = extension.currentHighWatermarks(address(mockPool), 0);
+    assertGt(hwm0, 0);
+  }
+
+  function test_remintWithoutEmptyCrossingKeepsStaleHwm() public {
+    uint128 price = uint128(Q64);
+    _storeBin(0, 10_000, 10_000, BIN_SHARES);
+    _configure(100_000, 0);
+    _exposeStopLoss(0, 0, price, true);
+
+    // Empty + remint with no swap while empty — HWM is not cleared on remove.
+    _storeBin(0, 0, 0, 0);
+    _storeBin(0, 1000, 1000, BIN_SHARES);
+
+    uint256 m0 = _computeMetricToken0(1000, 1000, BIN_SHARES, price);
+    uint256 hwm0 = _computeMetricToken0(10_000, 10_000, BIN_SHARES, price);
+    uint256 threshold = (hwm0 * (E6 - 100_000)) / E6;
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IOracleValueStopLossExtension.OracleStopLossTriggered.selector, int16(0), true, m0, threshold
+      )
+    );
+    _exposeStopLoss(0, 0, price, true);
+  }
+
+  function test_timelockScheduleRevertsOnUint40Overflow() public {
+    AllowlistFactoryStub fs = new AllowlistFactoryStub();
+    MockExtensionExtsloadPool p = new MockExtensionExtsloadPool(address(fs), MIN_SHARES);
+    fs.setPoolAdmin(address(p), admin);
+    OracleValueStopLossExtension ext = new OracleValueStopLossExtension(address(fs));
+    vm.prank(address(fs));
+    ext.initialize(address(p), abi.encode(uint32(0), uint64(0), type(uint40).max));
+
+    vm.warp(2);
+    uint256 overflowed = uint256(2) + type(uint40).max;
+    vm.prank(admin);
+    vm.expectRevert(
+      abi.encodeWithSelector(IOracleValueStopLossExtension.OracleStopLossTimelockOverflow.selector, overflowed)
+    );
+    ext.proposeOracleStopLossDrawdown(address(p), 1);
   }
 }
