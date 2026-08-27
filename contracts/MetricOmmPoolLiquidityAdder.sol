@@ -236,7 +236,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
   {
     uint256 n = w.binIdxs.length;
     // Reserve up to one wei of headroom per bin so the paying `addLiquidity` ceil-rounding cannot exceed the
-    // probe-based caps (Sherlock #3187). Caps at or below `n` stay unchanged (tiny deposits).
+    // probe-based caps. Caps at or below `n` stay unchanged (tiny deposits).
     uint256 adjMax0 = max0 > n ? max0 - n : max0;
     uint256 adjMax1 = max1 > n ? max1 - n : max1;
 
