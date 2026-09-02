@@ -55,8 +55,8 @@ contract MetricOmmPoolExecutableDepthProviderTest is MetricOmmPoolDataProviderTe
 
     assertGt(out.depth.asks.length, 0, "expected a published ask side");
     assertGt(out.depth.bids.length, 0, "expected a published bid side");
-    assertEq(out.asksExecutable, out.depth.asks.length, "ask side should be fully executable");
-    assertEq(out.bidsExecutable, out.depth.bids.length, "bid side should be fully executable");
+    assertEq(out.asksExecutableLevels, out.depth.asks.length, "ask side should be fully executable");
+    assertEq(out.bidsExecutableLevels, out.depth.bids.length, "bid side should be fully executable");
     assertEq(out.asksProbes, 1, "deepest level executed, so no halving should have happened");
     assertEq(out.bidsProbes, 1);
   }
@@ -86,8 +86,8 @@ contract MetricOmmPoolExecutableDepthProviderTest is MetricOmmPoolDataProviderTe
     MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
       lens.getExecutableLiquidityDepth(address(pool), WINDOW);
 
-    assertEq(out.asksExecutable, 0, "no level executes, so the side is closed");
-    assertEq(out.bidsExecutable, out.depth.bids.length, "the other side is unaffected");
+    assertEq(out.asksExecutableLevels, 0, "no level executes, so the side is closed");
+    assertEq(out.bidsExecutableLevels, out.depth.bids.length, "the other side is unaffected");
   }
 
   /// The AERO sell side: the shallowest level executes and nothing above it does, so the curve keeps
@@ -100,7 +100,7 @@ contract MetricOmmPoolExecutableDepthProviderTest is MetricOmmPoolDataProviderTe
     MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
       lens.getExecutableLiquidityDepth(address(pool), WINDOW);
 
-    assertEq(out.asksExecutable, 1, "only the shallowest level should survive");
+    assertEq(out.asksExecutableLevels, 1, "only the shallowest level should survive");
   }
 
   /// The search lands on the exact boundary wherever it sits, and pays a logarithmic number of probes
@@ -119,8 +119,44 @@ contract MetricOmmPoolExecutableDepthProviderTest is MetricOmmPoolDataProviderTe
     MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
       lens.getExecutableLiquidityDepth(address(pool), WINDOW);
 
-    assertEq(out.asksExecutable, boundary, "prefix should end exactly at the refusal");
+    assertEq(out.asksExecutableLevels, boundary, "prefix should end exactly at the refusal");
     assertLt(out.asksProbes, levels, "a linear scan would defeat the point");
+  }
+
+  /// The amount is the contract's primary answer, and it is a verified boundary rather than an
+  /// interpolation: it is exactly the cumulative output of the deepest level that executed. A caller
+  /// holding its own copy of the curve cuts at this number, which is why it must never be a guess.
+  function test_executableAmountIsTheVerifiedBoundary() public {
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory published =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+    uint256 boundary = published.depth.asks.length / 2;
+    _refuseAsksAtOrAbove(published.depth, boundary);
+
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+
+    assertEq(out.asksExecutableLevels, boundary);
+    assertEq(
+      out.asksExecutableAmountOut,
+      out.depth.asks[boundary - 1].amountCumulative,
+      "amount should be the last level that actually executed"
+    );
+    // The untouched side reports its deepest level, not a partial figure.
+    assertEq(out.bidsExecutableAmountOut, out.depth.bids[out.depth.bids.length - 1].amountCumulative);
+  }
+
+  /// A closed side reports zero, not the shallowest level's amount. Publishing the latter would hand
+  /// a caller a size the pool has just refused.
+  function test_closedSideReportsZeroAmount() public {
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory published =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+    _refuseAsksAtOrAbove(published.depth, 0);
+
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+
+    assertEq(out.asksExecutableLevels, 0);
+    assertEq(out.asksExecutableAmountOut, 0, "a refused side must not report a tradeable size");
   }
 
   // ============ Helpers ============

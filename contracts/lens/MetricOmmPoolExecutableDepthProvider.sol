@@ -48,16 +48,30 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
   // ============ Types ============
 
   /// @notice A depth snapshot alongside how much of each side is executable.
+  ///
+  /// @dev `asksExecutableAmountOut` / `bidsExecutableAmountOut` are the answer callers should key on.
+  ///      They are **token amounts**, in the same units as `DepthLevel.amountCumulative` on their side,
+  ///      so a caller holding its own copy of the curve can cut it wherever that amount falls —
+  ///      including part-way through a level, which is where a size boundary usually lands. The level
+  ///      counts index into *this* contract's ladder, and a caller whose ladder was built elsewhere
+  ///      (a different window, or its own implementation of the walk) cannot assume the two line up.
+  ///      They are reported for diagnostics and for callers consuming `depth` from this same struct.
+  ///
   /// @param depth The curve exactly as `getLiquidityDepth` returns it, untruncated.
-  /// @param asksExecutable Number of leading `depth.asks` levels that execute. `0` means the buy side
-  ///        is closed; `depth.asks.length` means the whole published side is good.
-  /// @param bidsExecutable Number of leading `depth.bids` levels that execute.
+  /// @param asksExecutableAmountOut Largest token0 output the pool will execute on the buy side. `0`
+  ///        means the side is closed.
+  /// @param bidsExecutableAmountOut Largest token1 output the pool will execute on the sell side.
+  /// @param asksExecutableLevels Leading `depth.asks` levels that execute. Meaningful only against
+  ///        `depth`, never against a ladder built elsewhere.
+  /// @param bidsExecutableLevels Leading `depth.bids` levels that execute.
   /// @param asksProbes Probes spent on the ask side, for callers budgeting `eth_call` gas.
   /// @param bidsProbes Probes spent on the bid side.
   struct ExecutableDepth {
     LiquidityDepth depth;
-    uint256 asksExecutable;
-    uint256 bidsExecutable;
+    uint256 asksExecutableAmountOut;
+    uint256 bidsExecutableAmountOut;
+    uint256 asksExecutableLevels;
+    uint256 bidsExecutableLevels;
     uint256 asksProbes;
     uint256 bidsProbes;
   }
@@ -92,7 +106,7 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     out.depth = this.getLiquidityDepth(pool, maxBinsPerSide);
 
     // `asks` is buying token0, so token1 goes in: `zeroForOne = false`. `bids` is the reverse.
-    (out.asksExecutable, out.asksProbes) = _executablePrefix(
+    (out.asksExecutableLevels, out.asksExecutableAmountOut, out.asksProbes) = _executablePrefix(
       ProbeEnv({
         pool: pool,
         zeroForOne: false,
@@ -102,7 +116,7 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
       }),
       out.depth.asks
     );
-    (out.bidsExecutable, out.bidsProbes) = _executablePrefix(
+    (out.bidsExecutableLevels, out.bidsExecutableAmountOut, out.bidsProbes) = _executablePrefix(
       ProbeEnv({
         pool: pool,
         zeroForOne: true,
@@ -132,12 +146,14 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
   ///      direction.
   function _executablePrefix(ProbeEnv memory env, DepthLevel[] memory levels)
     internal
-    returns (uint256 executable, uint256 probes)
+    returns (uint256 executable, uint256 amountOut, uint256 probes)
   {
     uint256 count = levels.length;
-    if (count == 0) return (0, 0);
+    if (count == 0) return (0, 0, 0);
 
-    if (_probe(env, levels[count - 1].amountCumulative)) return (count, 1);
+    if (_probe(env, levels[count - 1].amountCumulative)) {
+      return (count, levels[count - 1].amountCumulative, 1);
+    }
     probes = 1;
 
     // Invariant: levels below `lo` execute, `hi` does not. `lo` counts levels, not indices.
@@ -152,7 +168,11 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
         hi = mid;
       }
     }
-    return (lo, probes);
+
+    // The amount is the boundary the search actually verified, not an interpolation: `lo == 0` means
+    // even the shallowest level was refused, so there is no verified size at all.
+    amountOut = lo == 0 ? 0 : levels[lo - 1].amountCumulative;
+    return (lo, amountOut, probes);
   }
 
   /// @dev Whether the pool fills `amountOut` on this side, extensions included.
