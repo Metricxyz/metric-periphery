@@ -10,65 +10,30 @@ import {MetricOmmSwapQuoteDecode} from "../libraries/MetricOmmSwapQuoteDecode.so
 
 /// @title MetricOmmPoolExecutableDepthProvider
 /// @notice `getLiquidityDepth` plus how much of each side the pool will actually execute.
-/// @dev For off-chain queries only (`eth_call`); not `view`, because the probes below drive
-///      `simulateSwapAndRevert`, which mutates and then reverts.
+/// @dev Off-chain queries only (`eth_call`); not `view` because the probes drive
+///      `simulateSwapAndRevert`. `getLiquidityDepth` is authoritative about liquidity and silent about
+///      permission: a `beforeSwap`/`afterSwap` extension can refuse a trade the curve says is fillable.
 ///
-///      `getLiquidityDepth` walks the pool's bins through the same `SwapMath` the pool uses, so it is
-///      authoritative about *liquidity*. It is silent about *permission*: a pool may attach an extension
-///      to `beforeSwap` or `afterSwap`, and those can reject a trade the curve says is fillable. The
-///      consequence is not hypothetical — Base AERO/USDC carried an `OracleValueStopLoss` on `afterSwap`
-///      that refused every swap above roughly one AERO while the published curve showed the full range,
-///      so aggregators routed into it and their transactions reverted.
+///      Probes must use `simulateSwapAndRevert`, not `MetricOmmSwapQuoter.quoteLive*`: the quoter
+///      reverts inside `metricOmmSwapCallback`, which `swap` invokes *before* `_afterSwap`, so it never
+///      observes an `afterSwap` refusal. `simulateSwapAndRevert` runs both phases and reverts after.
 ///
-///      Two entrypoints could answer "will this actually execute", and only one of them works:
-///
-///      - `MetricOmmSwapQuoter.quoteLive*` drives the real `pool.swap` and reverts inside
-///        `metricOmmSwapCallback` to recover the deltas. But `swap` invokes the callback *before*
-///        `_afterSwap`, so that revert unwinds the call before any `afterSwap` extension has run. It
-///        sees `beforeSwap` refusals and is structurally blind to the other half.
-///      - `simulateSwapAndRevert` runs `_beforeSwap`, the swap, and `_afterSwap`, and only then reverts
-///        with `SimulateSwap`. It is the sole entrypoint that observes both phases, which is why every
-///        probe here uses it.
-///
-///      Prices come from the depth snapshot rather than a second provider read, so the probes are
-///      evaluated at exactly the prices the returned curve was built from. Probing walks the level
-///      ladder rather than raw token amounts: each level already carries the cumulative *output* it
-///      represents, so an exact-output probe needs no unit conversion and inherits the pool's own
-///      rounding.
-///
-///      A non-zero `pauseLevel` is deliberately not probed for. `swap` is `whenNotPaused` and
-///      `simulateSwapAndRevert` is not, so a paused pool simulates clean and no probe here could see
-///      it; callers must read `pauseLevel` themselves.
+///      A non-zero `pauseLevel` is not covered — `simulateSwapAndRevert` is not `whenNotPaused`, so a
+///      paused pool simulates clean. Callers read it themselves.
 contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
-  // ============ Errors ============
-
-  /// @notice `simulateSwapAndRevert` returned instead of reverting — the pool is not what we think it is.
+  /// @notice `simulateSwapAndRevert` returned instead of reverting — not the pool we assume.
   error ExecutableProbeDidNotRevert();
 
-  // ============ Types ============
-
-  /// @notice A depth snapshot alongside how much of each side is executable.
-  ///
-  /// @dev `asksExecutableAmountOut` / `bidsExecutableAmountOut` are the answer callers should key on.
-  ///      They are **token amounts**, in the same units as `DepthLevel.amountCumulative` on their side,
-  ///      so a caller holding its own copy of the curve can cut it wherever that amount falls —
-  ///      including part-way through a level, which is where a size boundary usually lands. The level
-  ///      counts index into *this* contract's ladder, and a caller whose ladder was built elsewhere
-  ///      (a different window, or its own implementation of the walk) cannot assume the two line up.
-  ///      They are reported for diagnostics and for callers consuming `depth` from this same struct.
-  ///
-  /// @param depth The curve exactly as `getLiquidityDepth` returns it, untruncated.
-  /// @param asksExecutableAmountOut Largest token0 output the pool will execute on the buy side. `0`
-  ///        means the side is closed.
-  /// @param bidsExecutableAmountOut Largest token1 output the pool will execute on the sell side.
-  /// @param asksExecutableLevels Leading `depth.asks` levels that execute. Meaningful only against
-  ///        `depth`, never against a ladder built elsewhere.
-  /// @param bidsExecutableLevels Leading `depth.bids` levels that execute.
-  /// @param asksProbes Probes spent on the ask side, for callers budgeting `eth_call` gas.
-  /// @param bidsProbes Probes spent on the bid side.
+  /// @notice Depth plus the executable prefix of each side.
+  /// @dev Key on the amounts, not the counts. Amounts are token figures in the same units as
+  ///      `DepthLevel.amountCumulative`, so a caller holding its own curve can locate them on it and cut
+  ///      part-way through a level. The counts index into `depth` alone; a ladder built elsewhere (a
+  ///      different window, different rounding) will not line up.
   struct ExecutableDepth {
     LiquidityDepth depth;
+    /// @dev Largest token0 output executable on the buy side; `0` when the side is closed.
     uint256 asksExecutableAmountOut;
+    /// @dev Largest token1 output executable on the sell side.
     uint256 bidsExecutableAmountOut;
     uint256 asksExecutableLevels;
     uint256 bidsExecutableLevels;
@@ -76,7 +41,7 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     uint256 bidsProbes;
   }
 
-  /// @dev Probe context, kept in one struct so the search loop stays shallow under via-IR.
+  /// @dev Grouped to keep the search loop shallow under via-IR.
   struct ProbeEnv {
     address pool;
     bool zeroForOne;
@@ -85,27 +50,20 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     uint128 referencePriceX64;
   }
 
-  // ============ Constructor ============
-
   constructor(address factory) MetricOmmPoolDataProvider(factory) {}
 
-  // ============ External: executable depth ============
-
-  /// @notice Depth for `pool`, plus the executable prefix of each side.
-  /// @dev One `eth_call`. Cost is the depth walk plus at most `log2(levels) + 1` simulations per side —
-  ///      and exactly one per side in the common case, where the deepest level executes and the search
-  ///      exits immediately.
-  /// @param pool Pool to read.
-  /// @param maxBinsPerSide Depth window, as `getLiquidityDepth` takes it.
+  /// @notice Depth for `pool`, plus the executable prefix of each side, in one call.
+  /// @dev Prices come from the snapshot, so probes run at the prices the returned curve was built from
+  ///      and the call needs nothing from its caller but `pool`. Costs the depth walk plus one
+  ///      simulation per side unobstructed, `log2(levels)` when something refuses.
   function getExecutableLiquidityDepth(address pool, uint8 maxBinsPerSide)
     external
     returns (ExecutableDepth memory out)
   {
-    // External self-call: the depth walk is `external` on the base contract. Harmless here (this is
-    // never in a transaction path) and it keeps the audited walk untouched.
+    // Self-call: the walk is `external` on the base contract, and this keeps it untouched.
     out.depth = this.getLiquidityDepth(pool, maxBinsPerSide);
 
-    // `asks` is buying token0, so token1 goes in: `zeroForOne = false`. `bids` is the reverse.
+    // `asks` buys token0, so token1 goes in: `zeroForOne = false`.
     (out.asksExecutableLevels, out.asksExecutableAmountOut, out.asksProbes) = _executablePrefix(
       ProbeEnv({
         pool: pool,
@@ -128,22 +86,10 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     );
   }
 
-  // ============ Internal: executable-prefix search ============
-
-  /// @dev Largest `n` such that levels `[0, n)` execute, found by binary search over level indices.
-  ///
-  ///      Searching indices rather than token amounts is what makes this cheap and exact: the level's
-  ///      own `amountCumulative` becomes the probe's target output, so no amount is ever derived or
-  ///      rounded on the way in.
-  ///
-  ///      The deepest level is tried first because that is the answer whenever nothing is refusing —
-  ///      the overwhelmingly common case, and it costs one simulation. Only a refusal there pays for
-  ///      the halving.
-  ///
-  ///      Monotonicity is assumed, and it is the pool's own: a larger trade moves the pool further, so
-  ///      an extension that refuses at size X refuses above it. Where that does not hold the result is
-  ///      still a prefix that was verified to execute at its own boundary, which is the conservative
-  ///      direction.
+  /// @dev Largest `n` with levels `[0, n)` executable, plus that boundary's cumulative output.
+  ///      Deepest level first, since that is the answer whenever nothing refuses. Monotonicity is the
+  ///      pool's own — a larger trade moves it further — and where it fails the result is still a
+  ///      prefix verified at its own boundary.
   function _executablePrefix(ProbeEnv memory env, DepthLevel[] memory levels)
     internal
     returns (uint256 executable, uint256 amountOut, uint256 probes)
@@ -156,7 +102,7 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     }
     probes = 1;
 
-    // Invariant: levels below `lo` execute, `hi` does not. `lo` counts levels, not indices.
+    // Levels below `lo` execute, `hi` does not. `lo` counts levels, not indices.
     uint256 lo = 0;
     uint256 hi = count - 1;
     while (lo < hi) {
@@ -169,22 +115,14 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
       }
     }
 
-    // The amount is the boundary the search actually verified, not an interpolation: `lo == 0` means
-    // even the shallowest level was refused, so there is no verified size at all.
+    // A verified boundary, never an interpolation: `lo == 0` means even the shallowest was refused.
     amountOut = lo == 0 ? 0 : levels[lo - 1].amountCumulative;
     return (lo, amountOut, probes);
   }
 
-  /// @dev Whether the pool fills `amountOut` on this side, extensions included.
-  ///
-  ///      Exact-output, so the target is the level's own cumulative figure with no conversion. A zero
-  ///      target is treated as not executable: there is no trade to ask about, and the pool rejects a
-  ///      zero `amountSpecified` outright.
-  ///
-  ///      Reverting with `SimulateSwap` and both deltas non-zero is the only success. Any other revert
-  ///      is a refusal — an extension, a price bound, or liquidity — and `SimulateSwap` carrying a zero
-  ///      delta means nothing filled. Neither is distinguished, because the caller only needs to know
-  ///      where the executable prefix ends.
+  /// @dev Whether the pool fills `amountOut` on this side, extensions included. Exact-output, so the
+  ///      level's own figure is the target and no amount is derived. Only `SimulateSwap` with both
+  ///      deltas non-zero counts as executable; any other revert is a refusal.
   function _probe(ProbeEnv memory env, uint256 amountOut) internal returns (bool) {
     if (amountOut == 0) return false;
 
@@ -201,8 +139,6 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
         env.referencePriceX64,
         hex""
       ) {
-      // `simulateSwapAndRevert` always reverts. Returning means the target is not the pool we assume,
-      // and treating that as a healthy fill would publish depth on the strength of a bad assumption.
       revert ExecutableProbeDidNotRevert();
     } catch (bytes memory reason) {
       (int128 amount0Delta, int128 amount1Delta, bool matched) =
