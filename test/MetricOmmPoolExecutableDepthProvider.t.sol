@@ -160,6 +160,49 @@ contract MetricOmmPoolExecutableDepthProviderTest is MetricOmmPoolDataProviderTe
     assertEq(out.asksExecutableAmountOut, 0, "a refused side must not report a tradeable size");
   }
 
+  /// The pool clamps an exact-output request down to available liquidity instead of reverting
+  /// (`_swapAcrossBins`), so a partial fill still comes back as `SimulateSwap` with non-zero deltas.
+  /// That must count as a refusal: reporting it would publish a size the pool just declined to
+  /// deliver, which is the whole failure this contract exists to prevent.
+  function test_clampedPartialFillIsNotExecutable() public {
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory published =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+    uint256 deepest = published.depth.asks[published.depth.asks.length - 1].amountCumulative;
+
+    // Answer the deepest probe with a well-formed SimulateSwap that delivers half what was asked.
+    vm.mockCallRevert(
+      address(pool),
+      _probeCalldata(published.depth, deepest),
+      abi.encodeWithSelector(
+        IMetricOmmPoolActions.SimulateSwap.selector, -int256(deepest / 2), int256(published.depth.asks.length)
+      )
+    );
+
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+
+    assertLt(out.asksExecutableLevels, out.depth.asks.length, "a clamped fill must not pass as executable");
+    assertGt(out.asksProbes, 1, "the refusal should have sent the search into halving");
+  }
+
+  /// Deltas in the wrong direction are not a fill either — output must leave the pool and input enter.
+  function test_wrongDirectionDeltasAreNotExecutable() public {
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory published =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+    uint256 deepest = published.depth.asks[published.depth.asks.length - 1].amountCumulative;
+
+    vm.mockCallRevert(
+      address(pool),
+      _probeCalldata(published.depth, deepest),
+      abi.encodeWithSelector(IMetricOmmPoolActions.SimulateSwap.selector, int256(deepest), int256(1))
+    );
+
+    MetricOmmPoolExecutableDepthProvider.ExecutableDepth memory out =
+      lens.getExecutableLiquidityDepth(address(pool), WINDOW);
+
+    assertLt(out.asksExecutableLevels, out.depth.asks.length);
+  }
+
   // ============ Helpers ============
 
   /// @dev Make every ask level from `firstRefused` upward revert the way an extension would, by mocking

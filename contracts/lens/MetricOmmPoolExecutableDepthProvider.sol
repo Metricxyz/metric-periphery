@@ -132,9 +132,16 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     return (lo, amountOut, probes);
   }
 
-  /// @dev Whether the pool fills `amountOut` on this side, extensions included. Exact-output, so the
-  ///      level's own figure is the target and no amount is derived. Only `SimulateSwap` with both
-  ///      deltas non-zero counts as executable; any other revert is a refusal.
+  /// @dev Whether the pool fills `amountOut` in full on this side, extensions included. Exact-output,
+  ///      so the level's own figure is the target and no amount is derived.
+  ///
+  ///      Executable means the pool delivered the whole requested output, not merely that something
+  ///      happened. `_swapAcrossBins` **clamps** an exact-output request down to the liquidity actually
+  ///      available rather than reverting, so a partial fill still comes back as `SimulateSwap` with
+  ///      non-zero deltas; treating that as a pass would publish a size the pool had just declined to
+  ///      deliver. The direction of both legs is checked for the same reason.
+  ///
+  ///      Any other revert is a refusal.
   function _probe(ProbeEnv memory env, uint256 amountOut) internal returns (bool) {
     if (amountOut == 0) return false;
 
@@ -156,7 +163,12 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
       (int128 amount0Delta, int128 amount1Delta, bool matched) =
         MetricOmmSwapQuoteDecode.decodeSwapDeltas(reason, IMetricOmmPoolActions.SimulateSwap.selector);
       if (!matched) return false;
-      return amount0Delta != 0 && amount1Delta != 0;
+
+      // Output leaves the pool (negative), input enters it (positive).
+      (int128 outDelta, int128 inDelta) = env.zeroForOne ? (amount1Delta, amount0Delta) : (amount0Delta, amount1Delta);
+      if (outDelta >= 0 || inDelta <= 0) return false;
+
+      return MetricOmmSwapInputs.int128ToUint128(-outDelta) >= amountOut;
     }
   }
 }
