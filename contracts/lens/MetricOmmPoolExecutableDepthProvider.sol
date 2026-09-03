@@ -22,6 +22,9 @@ import {MetricOmmSwapQuoteDecode} from "../libraries/MetricOmmSwapQuoteDecode.so
 ///
 ///      - A non-zero `pauseLevel`: `simulateSwapAndRevert` is not `whenNotPaused`, so a paused pool
 ///        simulates clean. Callers read it themselves.
+///      - Anything keying on `inSwap()`. It reports `address(0)` throughout
+///        `simulateSwapAndRevert`, since the active action is not `SWAP`, so an extension consulting it
+///        sees a different world than a live swap would. `OracleValueStopLossExtension` does not.
 ///      - An identity gate. Probes reach the pool directly, so it sees `msg.sender` as this contract
 ///        and never a prospective trader — there is no parameter to carry one. Against a pool running
 ///        `SwapAllowlistExtension` (or anything else keying on `sender` in `beforeSwap`) the verdict
