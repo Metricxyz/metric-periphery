@@ -18,8 +18,16 @@ import {MetricOmmSwapQuoteDecode} from "../libraries/MetricOmmSwapQuoteDecode.so
 ///      reverts inside `metricOmmSwapCallback`, which `swap` invokes *before* `_afterSwap`, so it never
 ///      observes an `afterSwap` refusal. `simulateSwapAndRevert` runs both phases and reverts after.
 ///
-///      A non-zero `pauseLevel` is not covered — `simulateSwapAndRevert` is not `whenNotPaused`, so a
-///      paused pool simulates clean. Callers read it themselves.
+///      Two refusals are out of reach, and both are silent rather than erroring:
+///
+///      - A non-zero `pauseLevel`: `simulateSwapAndRevert` is not `whenNotPaused`, so a paused pool
+///        simulates clean. Callers read it themselves.
+///      - An identity gate. Probes reach the pool directly, so it sees `msg.sender` as this contract
+///        and never a prospective trader — there is no parameter to carry one. Against a pool running
+///        `SwapAllowlistExtension` (or anything else keying on `sender` in `beforeSwap`) the verdict
+///        describes *this contract's* permission: both sides read closed if it is not allowlisted, and
+///        the gate is trivially satisfied for everyone if it is. Neither is the answer a caller wants,
+///        so treat results for such pools as unreliable rather than conservative.
 contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
   /// @notice `simulateSwapAndRevert` returned instead of reverting — not the pool we assume.
   error ExecutableProbeDidNotRevert();
@@ -35,9 +43,13 @@ contract MetricOmmPoolExecutableDepthProvider is MetricOmmPoolDataProvider {
     uint256 asksExecutableAmountOut;
     /// @dev Largest token1 output executable on the sell side.
     uint256 bidsExecutableAmountOut;
+    /// @dev Leading `depth.asks` levels that execute. Diagnostic; see the struct note.
     uint256 asksExecutableLevels;
+    /// @dev Leading `depth.bids` levels that execute.
     uint256 bidsExecutableLevels;
+    /// @dev Simulations spent on the ask side, for callers budgeting `eth_call` gas.
     uint256 asksProbes;
+    /// @dev Simulations spent on the bid side.
     uint256 bidsProbes;
   }
 
