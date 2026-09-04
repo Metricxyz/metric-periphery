@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
+// forge-lint: disable-start(unsafe-typecast)
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 

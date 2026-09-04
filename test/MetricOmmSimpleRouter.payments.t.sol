@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
+// forge-lint: disable-start(erc20-unchecked-transfer)
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";

@@ -302,15 +302,16 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     uint256 lowerPriceX64 = _distanceE6ToPriceX64(curBinDistFromProvidedPriceE6, referencePriceX64, Math.Rounding.Floor);
     int256 distUpperE6 = int256(curBinDistFromProvidedPriceE6) + int256(uint256(lengthE6));
     uint256 upperPriceX64 = _distanceE6ToPriceX64(int24(distUpperE6), referencePriceX64, Math.Rounding.Floor);
-    uint256 marginalPriceX64 =
-      SwapMath.calculatePriceAtBinPosition(lowerPriceX64, upperPriceX64, curPosInBin, Math.Rounding.Floor);
 
-    expectedAsk = FeeMath.effectivePriceX64(
-      marginalPriceX64, FeeMath.binTotalFeeX64(baseBuyFeeX64, addFeeBuyE6, notionalFeeX64), false
-    );
-    expectedBid = FeeMath.effectivePriceX64(
-      marginalPriceX64, FeeMath.binTotalFeeX64(baseSellFeeX64, addFeeSellE6, notionalFeeX64), true
-    );
+    uint256 buyFeeX64 = FeeMath.binTotalFeeX64(baseBuyFeeX64, addFeeBuyE6, notionalFeeX64);
+    uint256 effLowerAskX64 = FeeMath.effectivePriceX64(lowerPriceX64, buyFeeX64, false);
+    uint256 effUpperAskX64 = FeeMath.effectivePriceX64(upperPriceX64, buyFeeX64, false);
+    expectedAsk = SwapMath.calculatePriceAtBinPosition(effLowerAskX64, effUpperAskX64, curPosInBin, Math.Rounding.Ceil);
+
+    uint256 sellFeeX64 = FeeMath.binTotalFeeX64(baseSellFeeX64, addFeeSellE6, notionalFeeX64);
+    uint256 effLowerBidX64 = FeeMath.effectivePriceX64(lowerPriceX64, sellFeeX64, true);
+    uint256 effUpperBidX64 = FeeMath.effectivePriceX64(upperPriceX64, sellFeeX64, true);
+    expectedBid = SwapMath.calculatePriceAtBinPosition(effLowerBidX64, effUpperBidX64, curPosInBin, Math.Rounding.Ceil);
   }
 
   function _distanceE6ToPriceX64(int24 distanceValueE6, uint256 midPriceX64, Math.Rounding rounding)

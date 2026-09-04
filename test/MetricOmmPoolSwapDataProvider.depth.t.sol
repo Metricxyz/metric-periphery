@@ -7,6 +7,7 @@ import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
+import {LiquidityLadder} from "../contracts/libraries/LiquidityLadder.sol";
 import {RouterTestFactory} from "./RouterTestFactory.sol";
 import {
   LiquiditySeederForSwapData,
@@ -15,8 +16,8 @@ import {
 } from "./MetricOmmPoolDataProviderTestBase.sol";
 
 /// @title MetricOmmPoolDataProvider liquidity depth integration tests
-/// @notice Same P1/P2/A1/A2/A3 scenario at four `getLiquidityDepth` window sizes to compare gas (eth_call cost scales with ladder length).
-/// @dev **P1** Full-range pool (`fullBinRange = true`, 256 bins with liquidity). **P2** One `_randomWalkSwaps` step per fuzz case. **A1** `getLiquidityDepth(pool, maxBinsPerSide)`.
+/// @notice Same P1/P2/A1/A2/A3 scenario at four `getLiquidityDepthLive` window sizes to compare gas (eth_call cost scales with ladder length).
+/// @dev **P1** Full-range pool (`fullBinRange = true`, 256 bins with liquidity). **P2** One `_randomWalkSwaps` step per fuzz case. **A1** `getLiquidityDepthLive(pool, maxBinsPerSide)`.
 ///      **A2-A3** Cheap cumulative checks: first valid ladder rows (smallest cumulatives, bounded count) plus one largest feasible cumulative per side vs `simulateSwapAndRevert`, then reference bid/ask vs the same provider.
 ///      Four tests fix `maxBinsPerSide` to 4, 16, 64, and 255.
 contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase {
@@ -58,23 +59,19 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     _randomWalkSwaps(router, address(pool), 18, 18, seed, 1);
 
     (uint128 bidOracle, uint128 askOracle,) = oracle.getQuote();
-    MetricOmmPoolDataProvider.LiquidityDepth memory depth = helper.getLiquidityDepth(address(pool), maxBinsPerSide);
+    LiquidityLadder.LiquidityDepth memory depth = helper.getLiquidityDepthLive(address(pool), maxBinsPerSide);
 
     uint256 runningAsk;
     uint256 runningBid;
 
     for (uint256 i; i < depth.asks.length; i++) {
-      runningAsk += depth.asks[i].amountInBin;
-      assertEq(depth.asks[i].amountCumulative, runningAsk, "ask ladder cumulative mismatch");
+      runningAsk += depth.asks[i].amountTradeableInBin;
+      assertEq(depth.asks[i].cumulativeOut, runningAsk, "ask ladder cumulative mismatch");
     }
 
     for (uint256 j; j < depth.bids.length; j++) {
-      runningBid += depth.bids[j].amountInBin;
-      assertEq(depth.bids[j].amountCumulative, runningBid, "bid ladder cumulative mismatch");
-    }
-
-    if (depth.asks.length == 0 || depth.bids.length == 0) {
-      vm.skip(true, "empty depth ladder side");
+      runningBid += depth.bids[j].amountTradeableInBin;
+      assertEq(depth.bids[j].cumulativeOut, runningBid, "bid ladder cumulative mismatch");
     }
 
     _assertLadderCumulativeSimsCheap(
@@ -85,8 +82,8 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     );
 
     (uint256 refBid, uint256 refAsk) = _expectedBestBidAsk(address(pool), address(factory), address(oracle));
-    assertEq(refBid, depth.referenceBestBidX64);
-    assertEq(refAsk, depth.referenceBestAskX64);
+    assertEq(refBid, depth.effectiveCurrentBidX64);
+    assertEq(refAsk, depth.effectiveCurrentAskX64);
   }
 
   /// @notice Bounded-cost cross-check: first `maxLowestRowsToCheck` valid rows (smallest cumulatives) + one largest valid cumulative.
@@ -94,7 +91,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     address poolAddr,
     uint128 bidOracle,
     uint128 askOracle,
-    MetricOmmPoolDataProvider.DepthLevel[] memory levels,
+    LiquidityLadder.DepthLevel[] memory levels,
     bool zeroForOne,
     uint128 priceLimitX64,
     uint256 maxLowestRowsToCheck
@@ -104,7 +101,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
 
     uint256 picked;
     for (uint256 i; i < n && picked < maxLowestRowsToCheck; i++) {
-      uint256 cum = levels[i].amountCumulative;
+      uint256 cum = levels[i].cumulativeOut;
       if (cum == 0 || cum > maxAmt) continue;
       _simulateAndAssertCumulative(poolAddr, bidOracle, askOracle, zeroForOne, priceLimitX64, cum);
       unchecked {
@@ -115,7 +112,7 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
     uint256 bestCum;
     bool haveBest;
     for (uint256 j; j < n; j++) {
-      uint256 c = levels[j].amountCumulative;
+      uint256 c = levels[j].cumulativeOut;
       if (c == 0 || c > maxAmt) continue;
       if (!haveBest || c > bestCum) {
         bestCum = c;

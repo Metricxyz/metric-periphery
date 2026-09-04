@@ -1,56 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
 
-import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {MetricOmmSwapQuoter} from "../contracts/lens/MetricOmmSwapQuoter.sol";
 import {IMetricOmmSwapQuoter} from "../contracts/interfaces/IMetricOmmSwapQuoter.sol";
 import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
 import {WrongOutputPoolForSimpleRouter} from "./mocks/RouterPoolMocks.sol";
 
-contract QuoteSwapResultDecodeProbe {
-  function decode(bytes memory reason) external pure returns (int256 amount0Delta, int256 amount1Delta) {
-    // forge-lint: disable-next-line(unsafe-typecast)
-    if (bytes4(reason) != IMetricOmmSwapQuoter.QuoteSwapResult.selector) revert("unexpected selector");
-    assembly ("memory-safe") {
-      amount0Delta := mload(add(reason, 36))
-      amount1Delta := mload(add(reason, 68))
-    }
-  }
-}
-
-contract QuoteSwapCallbackTrigger {
-  function trigger(address quoter, int256 amount0Delta, int256 amount1Delta) external {
-    IMetricOmmSwapCallback(quoter).metricOmmSwapCallback(amount0Delta, amount1Delta, hex"");
-  }
-}
-
 contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
   MetricOmmSwapQuoter internal swapQuoter;
-  QuoteSwapResultDecodeProbe internal decodeProbe;
-  QuoteSwapCallbackTrigger internal callbackTrigger;
 
   function setUp() public override {
     super.setUp();
     swapQuoter = new MetricOmmSwapQuoter();
-    decodeProbe = new QuoteSwapResultDecodeProbe();
-    callbackTrigger = new QuoteSwapCallbackTrigger();
   }
 
-  function test_decodeQuoteSwapResult_fromCallbackRevert() public {
-    int256 expectedAmount0Delta = 2_500;
-    int256 expectedAmount1Delta = -2_400;
-
-    try callbackTrigger.trigger(address(swapQuoter), expectedAmount0Delta, expectedAmount1Delta) {
-      fail("callback should revert with QuoteSwapResult");
-    } catch (bytes memory reason) {
-      (int256 amount0Delta, int256 amount1Delta) = decodeProbe.decode(reason);
-      assertEq(amount0Delta, expectedAmount0Delta, "amount0Delta");
-      assertEq(amount1Delta, expectedAmount1Delta, "amount1Delta");
-    }
-  }
-
-  function test_quoteSwapExactIn_decodesCallbackRevert() public {
+  function test_quoteLiveExactInSingle_matchesRouterSwap() public {
     uint128 amountIn = 2_500;
     uint128 priceLimit = _priceLimit(true);
 
@@ -79,7 +44,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     assertEq(quotedOut, actualOut, "quote matches swap");
   }
 
-  function test_quoteSwapExactOut_decodesCallbackRevert() public {
+  function test_quoteLiveExactOutSingle_matchesRouterSwap() public {
     uint128 amountOut = 1_500;
     uint128 priceLimit = _priceLimit(true);
 
@@ -263,7 +228,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
 
   function test_quoteLiveExactIn_revertsInvalidInputAmountAtHop() public {
     WrongOutputPoolForSimpleRouter wrongPool =
-      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), 400, -300);
+      new WrongOutputPoolForSimpleRouter(address(weth), address(token1), address(oracle), 400, -300);
 
     address[] memory pools = new address[](2);
     pools[0] = address(wrongPool);
@@ -285,7 +250,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
 
   function test_quoteLiveExactOut_revertsInvalidOutputAmountAtHop() public {
     WrongOutputPoolForSimpleRouter wrongPool =
-      new WrongOutputPoolForSimpleRouter(address(token1), address(token2), 600, -400);
+      new WrongOutputPoolForSimpleRouter(address(token1), address(token2), address(oracle), 600, -400);
 
     address[] memory pools = new address[](2);
     pools[0] = address(pool);
