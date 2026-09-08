@@ -1,24 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
 
-import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
-
 /// @title IMetricOmmSwapQuoter
-/// @notice Off-chain swap quotes: live oracle prices via pool.swap, or hypothetical prices via simulateSwapAndRevert.
-/// @dev For off-chain queries only (eth_call). Live quotes revert in the swap callback; hypothetical quotes read SimulateSwap revert data.
+/// @notice Off-chain swap quotes via simulateSwapAndRevert: live quotes use the pool's own oracle prices, hypothetical quotes use caller-supplied prices.
+/// @dev For off-chain queries only (eth_call). Both quote kinds read SimulateSwap revert data.
 ///      Multihop exact-input walks `pools` forward; prior hop output becomes next hop input. Multihop exact-output walks
 ///      `pools` backward; prior hop input becomes next hop output. Multihop paths use open per-hop price limits.
-interface IMetricOmmSwapQuoter is IMetricOmmSwapCallback {
+interface IMetricOmmSwapQuoter {
   // ============ Errors ============
 
-  /// @notice Deliberate revert carrying swap deltas from the callback.
-  error QuoteSwapResult(int256 amount0Delta, int256 amount1Delta);
   /// @notice Wrapped downstream revert from a quote path.
   error WrappedError(address target, bytes4 selector, bytes reason);
-  /// @notice pool.swap completed without callback revert.
-  error QuoteDidNotRevert();
   /// @notice simulateSwapAndRevert completed without SimulateSwap revert.
-  error HypotheticalQuoteDidNotRevert();
+  error QuoteDidNotRevert();
+  /// @notice Pool has neither mutable nor immutable price provider configured.
+  error InvalidPriceProvider();
   /// @notice Provided unsigned amount does not fit in int128.
   error AmountTooLarge(uint128 amount);
   /// @notice Deltas do not match expected exact-in/out shape.

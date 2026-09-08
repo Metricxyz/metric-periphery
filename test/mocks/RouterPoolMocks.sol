@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import {PoolImmutables} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
+import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
 import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
 import {MetricOmmSimpleRouter} from "../../contracts/MetricOmmSimpleRouter.sol";
 import {IMetricOmmSimpleRouter} from "../../contracts/interfaces/IMetricOmmSimpleRouter.sol";
@@ -136,12 +137,14 @@ contract ReentrantPoolForSimpleRouter {
 contract WrongOutputPoolForSimpleRouter {
   address public immutable TOKEN0;
   address public immutable TOKEN1;
+  address public immutable PRICE_PROVIDER;
   int128 public immutable INPUT_DELTA;
   int128 public immutable OUTPUT_DELTA;
 
-  constructor(address token0, address token1, int128 inputDelta, int128 outputDelta) {
+  constructor(address token0, address token1, address priceProvider, int128 inputDelta, int128 outputDelta) {
     TOKEN0 = token0;
     TOKEN1 = token1;
+    PRICE_PROVIDER = priceProvider;
     INPUT_DELTA = inputDelta;
     OUTPUT_DELTA = outputDelta;
   }
@@ -156,7 +159,7 @@ contract WrongOutputPoolForSimpleRouter {
       initialScaledToken0PerShareE18: 1,
       initialScaledToken1PerShareE18: 1,
       minimalOperationalLiquidity: 1,
-      immutablePriceProvider: address(0),
+      immutablePriceProvider: PRICE_PROVIDER,
       lowestBin: 0,
       highestBin: 0,
       extension1: address(0),
@@ -181,5 +184,13 @@ contract WrongOutputPoolForSimpleRouter {
   {
     IMetricOmmSwapCallback(msg.sender).metricOmmSwapCallback(int256(INPUT_DELTA), int256(OUTPUT_DELTA), callbackData);
     return (INPUT_DELTA, OUTPUT_DELTA);
+  }
+
+  function simulateSwapAndRevert(address, bool, int128, uint128, uint128, uint128, uint128, bytes calldata)
+    external
+    view
+    returns (int128, int128)
+  {
+    revert IMetricOmmPoolActions.SimulateSwap(int256(INPUT_DELTA), int256(OUTPUT_DELTA));
   }
 }

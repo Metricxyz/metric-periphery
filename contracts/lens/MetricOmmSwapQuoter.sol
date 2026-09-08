@@ -3,7 +3,8 @@ pragma solidity ^0.8.35;
 
 import {IMetricOmmPool} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPool.sol";
 import {IMetricOmmPoolActions} from "@metric-core/interfaces/IMetricOmmPool/IMetricOmmPoolActions.sol";
-import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricOmmSwapCallback.sol";
+import {IPriceProvider} from "@metric-core/interfaces/IPriceProvider/IPriceProvider.sol";
+import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {IMetricOmmSwapQuoter} from "../interfaces/IMetricOmmSwapQuoter.sol";
 import {MetricOmmSwapInputs} from "../libraries/MetricOmmSwapInputs.sol";
 import {MetricOmmSwapResults} from "../libraries/MetricOmmSwapResults.sol";
@@ -85,6 +86,9 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         MetricOmmSwapPath.openLimit(zeroForOne),
         params.extensionDatas[i]
       );
+      // casting to 'uint8' is safe because '_validateQuotePath' above caps 'pools.length' at
+      // 'MetricOmmSwapPath.MAX_PATH_POOLS' (256), so 'i <= last' never exceeds 255
+      // forge-lint: disable-next-line(unsafe-typecast)
       if (hopAmountIn < amount) revert InvalidInputAmountAtHop(uint8(i), hopAmountIn, amount);
       if (i == last) return (params.amountIn, hopAmountOut);
       amount = MetricOmmSwapInputs.toUint128(hopAmountOut);
@@ -115,6 +119,9 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         MetricOmmSwapPath.openLimit(zeroForOne),
         params.extensionDatas[hop]
       );
+      // casting to 'uint8' is safe because '_validateQuotePath' above caps 'pools.length' at
+      // 'MetricOmmSwapPath.MAX_PATH_POOLS' (256), so 'hop <= last' never exceeds 255
+      // forge-lint: disable-next-line(unsafe-typecast)
       if (hopAmountOut != amount) revert InvalidOutputAmountAtHop(uint8(hop), hopAmountOut, amount);
       if (hop == 0) {
         amountIn = hopAmountIn;
@@ -156,7 +163,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     bytes memory extensionData
   ) public virtual returns (uint256, uint256) {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
-    (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
+    (int128 amount0Delta, int128 amount1Delta) = _quoteSwap(
       pool,
       recipient,
       zeroForOne,
@@ -198,7 +205,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     bytes memory extensionData
   ) public virtual returns (uint256, uint256) {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
-    (int128 amount0Delta, int128 amount1Delta) = _quoteHypotheticalSwap(
+    (int128 amount0Delta, int128 amount1Delta) = _quoteSwap(
       pool,
       recipient,
       zeroForOne,
@@ -240,6 +247,9 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         params.referencePricesX64[i],
         params.extensionDatas[i]
       );
+      // casting to 'uint8' is safe because '_validateQuotePath' above caps 'pools.length' at
+      // 'MetricOmmSwapPath.MAX_PATH_POOLS' (256), so 'i <= last' never exceeds 255
+      // forge-lint: disable-next-line(unsafe-typecast)
       if (hopAmountIn < amount) revert InvalidInputAmountAtHop(uint8(i), hopAmountIn, amount);
       if (i == last) return (params.amountIn, hopAmountOut);
       amount = MetricOmmSwapInputs.toUint128(hopAmountOut);
@@ -276,6 +286,9 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         params.referencePricesX64[hop],
         params.extensionDatas[hop]
       );
+      // casting to 'uint8' is safe because '_validateQuotePath' above caps 'pools.length' at
+      // 'MetricOmmSwapPath.MAX_PATH_POOLS' (256), so 'hop <= last' never exceeds 255
+      // forge-lint: disable-next-line(unsafe-typecast)
       if (hopAmountOut != amount) revert InvalidOutputAmountAtHop(uint8(hop), hopAmountOut, amount);
       if (hop == 0) {
         amountIn = hopAmountIn;
@@ -287,14 +300,19 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     revert InvalidSwapDeltas();
   }
 
-  // ============ External: callback ============
-
-  /// @inheritdoc IMetricOmmSwapCallback
-  function metricOmmSwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata) external override {
-    revert QuoteSwapResult(amount0Delta, amount1Delta);
-  }
-
   // ============ Internal: quote orchestration ============
+
+  /// @dev Resolves the pool's active price provider the same way `MetricOmmPool._resolvedPriceProvider()` does:
+  ///      the immutable provider if set, otherwise the mutable one read from pool storage via EXTSLOAD.
+  function _resolveLivePricesX64(address pool)
+    internal
+    returns (uint128 bidPriceX64, uint128 askPriceX64, uint128 referencePriceX64)
+  {
+    address provider = IMetricOmmPool(pool).getImmutables().immutablePriceProvider;
+    if (provider == address(0)) provider = PoolStateLibrary._slot3(pool);
+    if (provider == address(0)) revert InvalidPriceProvider();
+    (bidPriceX64, askPriceX64, referencePriceX64) = IPriceProvider(provider).getQuote();
+  }
 
   function _quoteLiveSwap(
     address pool,
@@ -304,21 +322,21 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 priceLimitX64,
     bytes memory extensionData
   ) internal returns (int128 amount0Delta, int128 amount1Delta) {
-    try IMetricOmmPoolActions(pool)
-      .swap(recipient, zeroForOne, amountSpecified, priceLimitX64, hex"", extensionData) returns (
-      int128, int128
-    ) {
-      revert QuoteDidNotRevert();
-    } catch (bytes memory reason) {
-      bool matched;
-      (amount0Delta, amount1Delta, matched) =
-        MetricOmmSwapQuoteDecode.decodeSwapDeltas(reason, QuoteSwapResult.selector);
-      if (matched) return (amount0Delta, amount1Delta);
-      revert WrappedError(pool, IMetricOmmPoolActions.swap.selector, reason);
-    }
+    (uint128 bidPriceX64, uint128 askPriceX64, uint128 referencePriceX64) = _resolveLivePricesX64(pool);
+    return _quoteSwap(
+      pool,
+      recipient,
+      zeroForOne,
+      amountSpecified,
+      priceLimitX64,
+      bidPriceX64,
+      askPriceX64,
+      referencePriceX64,
+      extensionData
+    );
   }
 
-  function _quoteHypotheticalSwap(
+  function _quoteSwap(
     address pool,
     address recipient,
     bool zeroForOne,
@@ -329,7 +347,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 referencePriceX64,
     bytes memory extensionData
   ) internal returns (int128 amount0Delta, int128 amount1Delta) {
-    try IMetricOmmPool(pool)
+    try IMetricOmmPoolActions(pool)
       .simulateSwapAndRevert(
         recipient,
         zeroForOne,
@@ -340,7 +358,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
         referencePriceX64,
         extensionData
       ) {
-      revert HypotheticalQuoteDidNotRevert();
+      revert QuoteDidNotRevert();
     } catch (bytes memory reason) {
       bool matched;
       (amount0Delta, amount1Delta, matched) =
