@@ -16,10 +16,10 @@ import {BaseMetricExtension} from "./base/BaseMetricExtension.sol";
 ///        changeE18^2 <= maxChangePerBlockE18^2 * (1 + blockDiff)
 ///      where 1e18 = 100% (full unit).
 ///
-///      Per-block budget: `anchorMidPriceX64` is the check reference and stays fixed for every swap in
-///      the current block. `lastObservedMidPriceX64` tracks the latest swap mid and only becomes
-///      the new anchor when the block changes — so the first swap cannot widen the ceiling for
-///      later swaps in the same block.
+///      Per-block budget: `anchorMidPriceX64` is the check reference and stays fixed until a swap
+///      lands in a block after `lastObservedBlock`. `blockDiff` is measured from `anchorBlock`, not
+///      from the swap's own block, so every swap checked against the same anchor gets the same
+///      allowance regardless of how many swaps already landed in that block.
 contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuardExtension {
   mapping(address pool => PriceVelocityState) public priceVelocityState;
 
@@ -34,7 +34,8 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
     PriceVelocityState storage s = priceVelocityState[pool_];
     s.anchorMidPriceX64 = newAnchorMidPriceX64;
     s.lastObservedMidPriceX64 = newAnchorMidPriceX64;
-    s.lastInteractionBlock = uint64(block.number);
+    s.anchorBlock = uint64(block.number);
+    s.lastObservedBlock = uint64(block.number);
     emit AnchorMidPriceUpdated(pool_, newAnchorMidPriceX64);
   }
 
@@ -57,25 +58,23 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
 
     PriceVelocityState storage s = priceVelocityState[pool_];
     uint128 anchorMid = s.anchorMidPriceX64;
-    uint64 prevBlock = s.lastInteractionBlock;
 
     if (anchorMid == 0) {
       s.anchorMidPriceX64 = midPrice;
+      s.anchorBlock = uint64(block.number);
       s.lastObservedMidPriceX64 = midPrice;
-      s.lastInteractionBlock = uint64(block.number);
+      s.lastObservedBlock = uint64(block.number);
       return IMetricOmmExtensions.beforeSwap.selector;
     }
 
-    uint256 blockDiff;
-    if (block.number != prevBlock) {
-      // New block: anchor to the previous block's last mid, not this swap's mid.
+    if (block.number > s.lastObservedBlock) {
+      // Left the last-observed block behind: roll the anchor to that block's final mid.
       anchorMid = s.lastObservedMidPriceX64;
-      blockDiff = block.number - prevBlock;
       s.anchorMidPriceX64 = anchorMid;
-      s.lastInteractionBlock = uint64(block.number);
-    } else {
-      blockDiff = 0;
+      s.anchorBlock = s.lastObservedBlock;
     }
+
+    uint256 blockDiff = block.number - s.anchorBlock;
 
     uint64 maxChange = s.maxChangePerBlockE18;
     if (maxChange != 0) {
@@ -89,6 +88,7 @@ contract PriceVelocityGuardExtension is BaseMetricExtension, IPriceVelocityGuard
     }
 
     s.lastObservedMidPriceX64 = midPrice;
+    s.lastObservedBlock = uint64(block.number);
 
     return IMetricOmmExtensions.beforeSwap.selector;
   }
