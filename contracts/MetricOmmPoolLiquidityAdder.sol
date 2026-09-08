@@ -69,6 +69,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
+    _requireFactoryPool(pool);
     _validateOwner(owner);
     _validateDeltas(deltas);
     _validateBinAndBinPosition(pool, binPositionBounds);
@@ -85,6 +86,7 @@ contract MetricOmmPoolLiquidityAdder is IMetricOmmPoolLiquidityAdder, PeripheryP
     BinPositionBounds calldata binPositionBounds,
     bytes calldata extensionData
   ) external payable override returns (uint256 amount0Added, uint256 amount1Added) {
+    _requireFactoryPool(pool);
     _validateDeltas(deltas);
     _validateBinAndBinPosition(pool, binPositionBounds);
     return _addLiquidity(pool, msg.sender, salt, deltas, msg.sender, maxAmountToken0, maxAmountToken1, extensionData);

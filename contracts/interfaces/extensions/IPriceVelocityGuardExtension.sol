@@ -5,11 +5,14 @@ pragma solidity ^0.8.35;
 /// @notice Per-pool oracle mid-price velocity guard admin and read API.
 interface IPriceVelocityGuardExtension {
   struct PriceVelocityState {
-    /// @dev Velocity check reference for the current interaction block. Fixed for all swaps in the block.
+    /// @dev Velocity check reference. Fixed until a swap lands in a block after `lastObservedBlock`.
     uint128 anchorMidPriceX64;
-    /// @dev Mid from the latest swap; becomes the next block's anchor.
+    /// @dev Mid from the latest swap; becomes the next anchor once its block is left behind.
     uint128 lastObservedMidPriceX64;
-    uint64 lastInteractionBlock;
+    /// @dev Block number `anchorMidPriceX64` was observed in; blockDiff is measured from here.
+    uint64 anchorBlock;
+    /// @dev Block number of the latest swap.
+    uint64 lastObservedBlock;
     uint64 maxChangePerBlockE18;
   }
 
