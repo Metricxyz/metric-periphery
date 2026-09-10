@@ -15,23 +15,14 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: live quotes (single hop) ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactInSingle(address pool, bool zeroForOne, uint128 amountIn, uint128 priceLimitX64)
-    external
-    returns (uint256, uint256)
-  {
-    return quoteLiveExactInSingle(pool, address(this), zeroForOne, amountIn, priceLimitX64, hex"");
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactInSingle(
     address pool,
-    address recipient,
+    address sender,
     bool zeroForOne,
     uint128 amountIn,
-    uint128 priceLimitX64,
-    bytes memory extensionData
-  ) public returns (uint256, uint256) {
-    return quoteLiveExactInSingle(pool, address(0), recipient, zeroForOne, amountIn, priceLimitX64, extensionData);
+    uint128 priceLimitX64
+  ) external returns (uint256, uint256) {
+    return quoteLiveExactInSingle(pool, sender, address(this), zeroForOne, amountIn, priceLimitX64, hex"");
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
@@ -58,25 +49,14 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactOutSingle(address pool, bool zeroForOne, uint128 amountOutDesired, uint128 priceLimitX64)
-    external
-    returns (uint256, uint256)
-  {
-    return quoteLiveExactOutSingle(pool, address(this), zeroForOne, amountOutDesired, priceLimitX64, hex"");
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactOutSingle(
     address pool,
-    address recipient,
+    address sender,
     bool zeroForOne,
     uint128 amountOutDesired,
-    uint128 priceLimitX64,
-    bytes memory extensionData
-  ) public returns (uint256, uint256) {
-    return quoteLiveExactOutSingle(
-      pool, address(0), recipient, zeroForOne, amountOutDesired, priceLimitX64, extensionData
-    );
+    uint128 priceLimitX64
+  ) external returns (uint256, uint256) {
+    return quoteLiveExactOutSingle(pool, sender, address(this), zeroForOne, amountOutDesired, priceLimitX64, hex"");
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
@@ -105,12 +85,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: live quotes (multihop) ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactIn(QuoteExactInputParams calldata params) external returns (uint256, uint256) {
-    return quoteLiveExactIn(address(0), params);
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactIn(address sender, QuoteExactInputParams calldata params) public returns (uint256, uint256) {
+  function quoteLiveExactIn(address sender, QuoteExactInputParams calldata params) external returns (uint256, uint256) {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);
 
     uint256 last = params.pools.length - 1;
@@ -139,13 +114,8 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactOut(QuoteExactOutputParams calldata params) external returns (uint256, uint256) {
-    return quoteLiveExactOut(address(0), params);
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactOut(address sender, QuoteExactOutputParams calldata params)
-    public
+    external
     returns (uint256 amountIn, uint256 amountOut)
   {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);
@@ -185,6 +155,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactInputSingle(
     address pool,
+    address sender,
     bool zeroForOne,
     uint128 amountIn,
     uint128 priceLimitX64,
@@ -193,33 +164,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 referencePriceX64
   ) external returns (uint256, uint256) {
     return quoteHypotheticalExactInputSingle(
-      pool, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
-    );
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalExactInputSingle(
-    address pool,
-    address recipient,
-    bool zeroForOne,
-    uint128 amountIn,
-    uint128 priceLimitX64,
-    uint128 bidPriceX64,
-    uint128 askPriceX64,
-    uint128 referencePriceX64,
-    bytes memory extensionData
-  ) public virtual returns (uint256, uint256) {
-    return quoteHypotheticalExactInputSingle(
-      pool,
-      address(0),
-      recipient,
-      zeroForOne,
-      amountIn,
-      priceLimitX64,
-      bidPriceX64,
-      askPriceX64,
-      referencePriceX64,
-      extensionData
+      pool, sender, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
     );
   }
 
@@ -255,6 +200,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactOutputSingle(
     address pool,
+    address sender,
     bool zeroForOne,
     uint128 amountOutDesired,
     uint128 priceLimitX64,
@@ -263,33 +209,16 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 referencePriceX64
   ) external returns (uint256, uint256) {
     return quoteHypotheticalExactOutputSingle(
-      pool, msg.sender, zeroForOne, amountOutDesired, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
-    );
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalExactOutputSingle(
-    address pool,
-    address recipient,
-    bool zeroForOne,
-    uint128 amountOutDesired,
-    uint128 priceLimitX64,
-    uint128 bidPriceX64,
-    uint128 askPriceX64,
-    uint128 referencePriceX64,
-    bytes memory extensionData
-  ) public virtual returns (uint256, uint256) {
-    return quoteHypotheticalExactOutputSingle(
       pool,
-      address(0),
-      recipient,
+      sender,
+      msg.sender,
       zeroForOne,
       amountOutDesired,
       priceLimitX64,
       bidPriceX64,
       askPriceX64,
       referencePriceX64,
-      extensionData
+      hex""
     );
   }
 
@@ -325,16 +254,8 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: hypothetical quotes (multihop) ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalExactInput(QuoteHypotheticalExactInputParams calldata params)
-    external
-    returns (uint256, uint256)
-  {
-    return quoteHypotheticalExactInput(address(0), params);
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactInput(address sender, QuoteHypotheticalExactInputParams calldata params)
-    public
+    external
     returns (uint256 totalIn, uint256 totalOut)
   {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);
@@ -371,16 +292,8 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalExactOutput(QuoteHypotheticalExactOutputParams calldata params)
-    external
-    returns (uint256, uint256)
-  {
-    return quoteHypotheticalExactOutput(address(0), params);
-  }
-
-  /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactOutput(address sender, QuoteHypotheticalExactOutputParams calldata params)
-    public
+    external
     returns (uint256 amountIn, uint256 amountOut)
   {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);

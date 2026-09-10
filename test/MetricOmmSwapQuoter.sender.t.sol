@@ -31,7 +31,7 @@ contract MetricOmmSwapQuoterSenderTest is SimpleRouterTestBase {
   function test_liveQuote_asRouter_matchesSenderGatedSwap() public {
     vm.prank(address(router));
     (uint256 quotedIn, uint256 quotedOut) =
-      quoter.quoteLiveExactInSingle(address(gatedPool), recipient, true, 2500, _priceLimit(true), hex"");
+      quoter.quoteLiveExactInSingle(address(gatedPool), address(0), recipient, true, 2500, _priceLimit(true), hex"");
     assertEq(quotedIn, 2500);
     assertGt(quotedOut, 0);
 
@@ -56,10 +56,19 @@ contract MetricOmmSwapQuoterSenderTest is SimpleRouterTestBase {
   function test_exactOutputQuotes_asRouter_matchLiveAndHypothetical() public {
     vm.prank(address(router));
     (uint256 liveIn, uint256 liveOut) =
-      quoter.quoteLiveExactOutSingle(address(gatedPool), recipient, true, 1500, _priceLimit(true), hex"");
+      quoter.quoteLiveExactOutSingle(address(gatedPool), address(0), recipient, true, 1500, _priceLimit(true), hex"");
     vm.prank(address(router));
     (uint256 hypotheticalIn, uint256 hypotheticalOut) = quoter.quoteHypotheticalExactOutputSingle(
-      address(gatedPool), recipient, true, 1500, _priceLimit(true), TEST_BID_X64, TEST_ASK_X64, TEST_BID_X64, hex""
+      address(gatedPool),
+      address(0),
+      recipient,
+      true,
+      1500,
+      _priceLimit(true),
+      TEST_BID_X64,
+      TEST_ASK_X64,
+      TEST_BID_X64,
+      hex""
     );
     assertGt(liveIn, 0);
     assertEq(liveOut, 1500);
@@ -77,7 +86,7 @@ contract MetricOmmSwapQuoterSenderTest is SimpleRouterTestBase {
       )
     );
     vm.prank(swapper);
-    quoter.quoteLiveExactInSingle(address(gatedPool), address(router), true, 2500, _priceLimit(true), hex"");
+    quoter.quoteLiveExactInSingle(address(gatedPool), address(0), address(router), true, 2500, _priceLimit(true), hex"");
   }
 
   function testFuzz_single_explicitSenderOverridesCaller(bool hypothetical, bool exactOut) public {
@@ -118,6 +127,29 @@ contract MetricOmmSwapQuoterSenderTest is SimpleRouterTestBase {
     _expectSenderDenied(exactOut ? address(gatedPool12) : address(gatedPool));
     vm.prank(address(router));
     _quoteMultiContext(swapper, hypothetical, exactOut);
+  }
+
+  function testFuzz_convenienceQuotes_propagateSender(bool hypothetical, bool exactOut, bool useDefault) public {
+    address sender = useDefault ? address(0) : address(router);
+    vm.prank(useDefault ? address(router) : swapper);
+    (uint256 amountIn, uint256 amountOut) = _quoteConvenience(sender, hypothetical, exactOut);
+    assertGt(amountIn, 0);
+    assertGt(amountOut, 0);
+  }
+
+  function _quoteConvenience(address sender, bool hypothetical, bool exactOut) internal returns (uint256, uint256) {
+    if (hypothetical) {
+      if (exactOut) {
+        return quoter.quoteHypotheticalExactOutputSingle(
+          address(gatedPool), sender, true, 1500, _priceLimit(true), TEST_BID_X64, TEST_ASK_X64, TEST_BID_X64
+        );
+      }
+      return quoter.quoteHypotheticalExactInputSingle(
+        address(gatedPool), sender, true, 2500, _priceLimit(true), TEST_BID_X64, TEST_ASK_X64, TEST_BID_X64
+      );
+    }
+    if (exactOut) return quoter.quoteLiveExactOutSingle(address(gatedPool), sender, true, 1500, _priceLimit(true));
+    return quoter.quoteLiveExactInSingle(address(gatedPool), sender, true, 2500, _priceLimit(true));
   }
 
   function _expectSenderDenied(address target) internal {
