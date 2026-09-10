@@ -4,6 +4,8 @@ pragma solidity ^0.8.35;
 /// @title IMetricOmmSwapQuoter
 /// @notice Off-chain swap quotes via simulateSwapAndRevert: live quotes use the pool's own oracle prices, hypothetical quotes use caller-supplied prices.
 /// @dev For off-chain queries only (eth_call). Both quote kinds read SimulateSwap revert data.
+///      The quote caller (`msg.sender`) is forwarded as the simulated sender to swap extensions. For quotes
+///      of router swaps, set the eth_call `from` to the router address and use an explicit recipient when needed.
 ///      Multihop exact-input walks `pools` forward; prior hop output becomes next hop input. Multihop exact-output walks
 ///      `pools` backward; prior hop input becomes next hop output. Multihop paths use open per-hop price limits.
 interface IMetricOmmSwapQuoter {
@@ -126,7 +128,8 @@ interface IMetricOmmSwapQuoter {
 
   /// @notice Quote single-hop exact-input swap at caller-supplied bid/ask/reference prices.
   /// @dev Uses msg.sender as recipient and empty extensionData; use the overload when extensions gate on those fields.
-  ///      `referencePriceX64` must satisfy `bid <= reference <= ask` (same rules as the pool).
+  ///      Use the geometric mid `sqrt(bid * ask)` for `referencePriceX64`; the pool enforces its configured
+  ///      bid/ask/reference asymmetry bound as well as price ordering.
   function quoteHypotheticalExactInputSingle(
     address pool,
     bool zeroForOne,

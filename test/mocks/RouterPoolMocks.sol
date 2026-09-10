@@ -186,7 +186,7 @@ contract WrongOutputPoolForSimpleRouter {
     return (INPUT_DELTA, OUTPUT_DELTA);
   }
 
-  function simulateSwapAndRevert(address, bool, int128, uint128, uint128, uint128, uint128, bytes calldata)
+  function simulateSwapAndRevert(address, address, bool, int128, uint128, uint128, uint128, uint128, bytes calldata)
     external
     view
     returns (int128, int128)

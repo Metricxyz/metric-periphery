@@ -349,6 +349,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   ) internal returns (int128 amount0Delta, int128 amount1Delta) {
     try IMetricOmmPoolActions(pool)
       .simulateSwapAndRevert(
+        msg.sender,
         recipient,
         zeroForOne,
         amountSpecified,
