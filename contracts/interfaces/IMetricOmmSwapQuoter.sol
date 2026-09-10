@@ -4,8 +4,9 @@ pragma solidity ^0.8.35;
 /// @title IMetricOmmSwapQuoter
 /// @notice Off-chain swap quotes via simulateSwapAndRevert: live quotes use the pool's own oracle prices, hypothetical quotes use caller-supplied prices.
 /// @dev For off-chain queries only (eth_call). Both quote kinds read SimulateSwap revert data.
-///      The quote caller (`msg.sender`) is forwarded as the simulated sender to swap extensions. For quotes
-///      of router swaps, set the eth_call `from` to the router address and use an explicit recipient when needed.
+///      Sender-aware overloads forward `sender` to swap extensions on every hop. A zero sender defaults to
+///      `msg.sender`; overloads without a sender use the same default. For router quotes, supply the router
+///      as sender and use an explicit recipient when needed.
 ///      Multihop exact-input walks `pools` forward; prior hop output becomes next hop input. Multihop exact-output walks
 ///      `pools` backward; prior hop input becomes next hop output. Multihop paths use open per-hop price limits.
 interface IMetricOmmSwapQuoter {
@@ -101,6 +102,18 @@ interface IMetricOmmSwapQuoter {
     bytes memory extensionData
   ) external returns (uint256, uint256);
 
+  /// @notice Quote with explicit sender, recipient, and extension context.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteLiveExactInSingle(
+    address pool,
+    address sender,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64,
+    bytes memory extensionData
+  ) external returns (uint256, uint256);
+
   /// @notice Quote single-hop exact-output swap using live pool prices.
   function quoteLiveExactOutSingle(address pool, bool zeroForOne, uint128 amountOutDesired, uint128 priceLimitX64)
     external
@@ -116,13 +129,33 @@ interface IMetricOmmSwapQuoter {
     bytes memory extensionData
   ) external returns (uint256, uint256);
 
+  /// @notice Quote with explicit sender, recipient, and extension context.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteLiveExactOutSingle(
+    address pool,
+    address sender,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    bytes memory extensionData
+  ) external returns (uint256, uint256);
+
   // ============ Live quotes: multihop ============
 
   /// @notice Quote multihop exact-input swap using live pool prices.
   function quoteLiveExactIn(QuoteExactInputParams calldata params) external returns (uint256, uint256);
 
+  /// @notice Quote every hop using the supplied sender for swap extensions.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteLiveExactIn(address sender, QuoteExactInputParams calldata params) external returns (uint256, uint256);
+
   /// @notice Quote multihop exact-output swap using live pool prices.
   function quoteLiveExactOut(QuoteExactOutputParams calldata params) external returns (uint256, uint256);
+
+  /// @notice Quote every hop using the supplied sender for swap extensions.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteLiveExactOut(address sender, QuoteExactOutputParams calldata params) external returns (uint256, uint256);
 
   // ============ Hypothetical quotes: single hop ============
 
@@ -143,6 +176,21 @@ interface IMetricOmmSwapQuoter {
   /// @notice Quote single-hop exact-input swap at caller-supplied prices with explicit extension context.
   function quoteHypotheticalExactInputSingle(
     address pool,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
+    uint128 referencePriceX64,
+    bytes memory extensionData
+  ) external returns (uint256, uint256);
+
+  /// @notice Quote with explicit sender, recipient, and extension context.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteHypotheticalExactInputSingle(
+    address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     uint128 amountIn,
@@ -178,6 +226,21 @@ interface IMetricOmmSwapQuoter {
     bytes memory extensionData
   ) external returns (uint256, uint256);
 
+  /// @notice Quote with explicit sender, recipient, and extension context.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteHypotheticalExactOutputSingle(
+    address pool,
+    address sender,
+    address recipient,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64,
+    uint128 bidPriceX64,
+    uint128 askPriceX64,
+    uint128 referencePriceX64,
+    bytes memory extensionData
+  ) external returns (uint256, uint256);
+
   // ============ Hypothetical quotes: multihop ============
 
   /// @notice Quote multihop exact-input swap at caller-supplied bid/ask prices per pool.
@@ -185,8 +248,20 @@ interface IMetricOmmSwapQuoter {
     external
     returns (uint256, uint256);
 
+  /// @notice Quote every hop using the supplied sender for swap extensions.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteHypotheticalExactInput(address sender, QuoteHypotheticalExactInputParams calldata params)
+    external
+    returns (uint256, uint256);
+
   /// @notice Quote multihop exact-output swap at caller-supplied bid/ask prices per pool.
   function quoteHypotheticalExactOutput(QuoteHypotheticalExactOutputParams calldata params)
+    external
+    returns (uint256, uint256);
+
+  /// @notice Quote every hop using the supplied sender for swap extensions.
+  /// @dev A zero sender defaults to msg.sender.
+  function quoteHypotheticalExactOutput(address sender, QuoteHypotheticalExactOutputParams calldata params)
     external
     returns (uint256, uint256);
 }
