@@ -20,7 +20,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     uint128 priceLimit = _priceLimit(true);
 
     (uint256 quotedIn, uint256 quotedOut) =
-      swapQuoter.quoteLiveExactInSingle(address(pool), recipient, true, amountIn, priceLimit, hex"");
+      swapQuoter.quoteLiveExactInSingle(address(pool), address(0), recipient, true, amountIn, priceLimit, hex"");
 
     assertEq(quotedIn, amountIn, "quoted amountIn");
     assertGt(quotedOut, 0, "quoted amountOut");
@@ -49,7 +49,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     uint128 priceLimit = _priceLimit(true);
 
     (uint256 quotedIn, uint256 quotedOut) =
-      swapQuoter.quoteLiveExactOutSingle(address(pool), recipient, true, amountOut, priceLimit, hex"");
+      swapQuoter.quoteLiveExactOutSingle(address(pool), address(0), recipient, true, amountOut, priceLimit, hex"");
 
     assertEq(quotedOut, amountOut, "quoted amountOut");
     assertGt(quotedIn, 0, "quoted amountIn");
@@ -83,6 +83,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     bytes[] memory extensionDatas = new bytes[](2);
 
     (uint256 quotedIn, uint256 quotedOut) = swapQuoter.quoteLiveExactIn(
+      address(0),
       IMetricOmmSwapQuoter.QuoteExactInputParams({
         pools: pools, extensionDatas: extensionDatas, zeroForOneBitMap: 3, amountIn: amountIn
       })
@@ -123,6 +124,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     bytes[] memory extensionDatas = new bytes[](2);
 
     (uint256 quotedIn, uint256 quotedOut) = swapQuoter.quoteLiveExactOut(
+      address(0),
       IMetricOmmSwapQuoter.QuoteExactOutputParams({
         pools: pools, extensionDatas: extensionDatas, zeroForOneBitMap: 3, amountOut: amountOut
       })
@@ -175,6 +177,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
     refPrices[1] = TEST_BID_X64;
 
     (uint256 quotedIn, uint256 quotedOut) = swapQuoter.quoteHypotheticalExactInput(
+      address(0),
       IMetricOmmSwapQuoter.QuoteHypotheticalExactInputParams({
         pools: pools,
         extensionDatas: extensionDatas,
@@ -220,6 +223,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
 
     vm.expectRevert(IMetricOmmSwapQuoter.InvalidPath.selector);
     swapQuoter.quoteLiveExactIn(
+      address(0),
       IMetricOmmSwapQuoter.QuoteExactInputParams({
         pools: pools, extensionDatas: extensionDatas, zeroForOneBitMap: 3, amountIn: 2000
       })
@@ -242,6 +246,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
       )
     );
     swapQuoter.quoteLiveExactIn(
+      address(0),
       IMetricOmmSwapQuoter.QuoteExactInputParams({
         pools: pools, extensionDatas: extensionDatas, zeroForOneBitMap: 3, amountIn: 2000
       })
@@ -264,6 +269,7 @@ contract MetricOmmSwapQuoterTest is SimpleRouterTestBase {
       )
     );
     swapQuoter.quoteLiveExactOut(
+      address(0),
       IMetricOmmSwapQuoter.QuoteExactOutputParams({
         pools: pools, extensionDatas: extensionDatas, zeroForOneBitMap: 3, amountOut: 500
       })

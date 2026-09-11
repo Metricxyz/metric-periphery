@@ -20,6 +20,8 @@ import {MetricOmmSwapQuoteDecode} from "./MetricOmmSwapQuoteDecode.sol";
 ///      per-bin execution-price formula (`MetricOmmPool._swapAcrossBins`: fee-adjust each bound, then interpolate
 ///      only for the in-bin current position), while `cumulativeOut`/`cumulativeIn` come from actually running the
 ///      cumulative amount through `simulateSwapAndRevert` - never re-derived swap math for the traded amounts.
+///      Simulations use the data provider as both sender and recipient, with empty extension data; depth is
+///      therefore evaluated in the provider's extension context, not a particular trader's or router's.
 ///      If a bin's full-crossing amount reverts for a reason other than the expected `SimulateSwap` payload (e.g. an
 ///      extension gate), the ladder binary-searches (bisecting from the bin's midpoint, up to `MAX_BINARY_SEARCH_ITERATIONS`
 ///      probes) the maximal amount that still succeeds within that bin, then stops - since any larger amount is
@@ -504,6 +506,7 @@ library LiquidityLadder {
     int128 amountSpecified = MetricOmmSwapInputs.asAmountSpecifiedOut(MetricOmmSwapInputs.toUint128(amountOutExternal));
     try IMetricOmmPoolActions(pool)
       .simulateSwapAndRevert(
+        address(this),
         address(this),
         ctx.zeroForOne,
         amountSpecified,

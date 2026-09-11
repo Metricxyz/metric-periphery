@@ -15,16 +15,20 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: live quotes (single hop) ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactInSingle(address pool, bool zeroForOne, uint128 amountIn, uint128 priceLimitX64)
-    external
-    returns (uint256, uint256)
-  {
-    return quoteLiveExactInSingle(pool, address(this), zeroForOne, amountIn, priceLimitX64, hex"");
+  function quoteLiveExactInSingle(
+    address pool,
+    address sender,
+    bool zeroForOne,
+    uint128 amountIn,
+    uint128 priceLimitX64
+  ) external returns (uint256, uint256) {
+    return quoteLiveExactInSingle(pool, sender, address(this), zeroForOne, amountIn, priceLimitX64, hex"");
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactInSingle(
     address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     uint128 amountIn,
@@ -33,22 +37,32 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   ) public returns (uint256, uint256) {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteLiveSwap(
-      pool, recipient, zeroForOne, MetricOmmSwapInputs.asAmountSpecifiedIn(amountIn), priceLimitX64, extensionData
+      pool,
+      sender,
+      recipient,
+      zeroForOne,
+      MetricOmmSwapInputs.asAmountSpecifiedIn(amountIn),
+      priceLimitX64,
+      extensionData
     );
     return MetricOmmSwapResults.extractAmountInAndOut(zeroForOne, amount0Delta, amount1Delta);
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactOutSingle(address pool, bool zeroForOne, uint128 amountOutDesired, uint128 priceLimitX64)
-    external
-    returns (uint256, uint256)
-  {
-    return quoteLiveExactOutSingle(pool, address(this), zeroForOne, amountOutDesired, priceLimitX64, hex"");
+  function quoteLiveExactOutSingle(
+    address pool,
+    address sender,
+    bool zeroForOne,
+    uint128 amountOutDesired,
+    uint128 priceLimitX64
+  ) external returns (uint256, uint256) {
+    return quoteLiveExactOutSingle(pool, sender, address(this), zeroForOne, amountOutDesired, priceLimitX64, hex"");
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteLiveExactOutSingle(
     address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     uint128 amountOutDesired,
@@ -58,6 +72,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteLiveSwap(
       pool,
+      sender,
       recipient,
       zeroForOne,
       MetricOmmSwapInputs.asAmountSpecifiedOut(amountOutDesired),
@@ -70,7 +85,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: live quotes (multihop) ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactIn(QuoteExactInputParams calldata params) external returns (uint256, uint256) {
+  function quoteLiveExactIn(address sender, QuoteExactInputParams calldata params) external returns (uint256, uint256) {
     _validateQuotePath(params.pools, params.extensionDatas, params.zeroForOneBitMap);
 
     uint256 last = params.pools.length - 1;
@@ -80,6 +95,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
       bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(params.zeroForOneBitMap, i);
       (uint256 hopAmountIn, uint256 hopAmountOut) = quoteLiveExactInSingle(
         params.pools[i],
+        sender,
         address(this),
         zeroForOne,
         amount,
@@ -98,7 +114,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteLiveExactOut(QuoteExactOutputParams calldata params)
+  function quoteLiveExactOut(address sender, QuoteExactOutputParams calldata params)
     external
     returns (uint256 amountIn, uint256 amountOut)
   {
@@ -113,6 +129,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
       bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(params.zeroForOneBitMap, hop);
       (uint256 hopAmountIn, uint256 hopAmountOut) = quoteLiveExactOutSingle(
         params.pools[hop],
+        sender,
         address(this),
         zeroForOne,
         amount,
@@ -138,6 +155,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactInputSingle(
     address pool,
+    address sender,
     bool zeroForOne,
     uint128 amountIn,
     uint128 priceLimitX64,
@@ -146,13 +164,14 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 referencePriceX64
   ) external returns (uint256, uint256) {
     return quoteHypotheticalExactInputSingle(
-      pool, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
+      pool, sender, msg.sender, zeroForOne, amountIn, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
     );
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactInputSingle(
     address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     uint128 amountIn,
@@ -165,6 +184,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteSwap(
       pool,
+      sender,
       recipient,
       zeroForOne,
       MetricOmmSwapInputs.asAmountSpecifiedIn(amountIn),
@@ -180,6 +200,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactOutputSingle(
     address pool,
+    address sender,
     bool zeroForOne,
     uint128 amountOutDesired,
     uint128 priceLimitX64,
@@ -188,13 +209,23 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     uint128 referencePriceX64
   ) external returns (uint256, uint256) {
     return quoteHypotheticalExactOutputSingle(
-      pool, msg.sender, zeroForOne, amountOutDesired, priceLimitX64, bidPriceX64, askPriceX64, referencePriceX64, hex""
+      pool,
+      sender,
+      msg.sender,
+      zeroForOne,
+      amountOutDesired,
+      priceLimitX64,
+      bidPriceX64,
+      askPriceX64,
+      referencePriceX64,
+      hex""
     );
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
   function quoteHypotheticalExactOutputSingle(
     address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     uint128 amountOutDesired,
@@ -207,6 +238,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(zeroForOne, priceLimitX64);
     (int128 amount0Delta, int128 amount1Delta) = _quoteSwap(
       pool,
+      sender,
       recipient,
       zeroForOne,
       MetricOmmSwapInputs.asAmountSpecifiedOut(amountOutDesired),
@@ -222,7 +254,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   // ============ External: hypothetical quotes (multihop) ============
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalExactInput(QuoteHypotheticalExactInputParams calldata params)
+  function quoteHypotheticalExactInput(address sender, QuoteHypotheticalExactInputParams calldata params)
     external
     returns (uint256 totalIn, uint256 totalOut)
   {
@@ -238,6 +270,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
       bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(params.zeroForOneBitMap, i);
       (uint256 hopAmountIn, uint256 hopAmountOut) = quoteHypotheticalExactInputSingle(
         params.pools[i],
+        sender,
         address(this),
         zeroForOne,
         amount,
@@ -259,7 +292,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   }
 
   /// @inheritdoc IMetricOmmSwapQuoter
-  function quoteHypotheticalExactOutput(QuoteHypotheticalExactOutputParams calldata params)
+  function quoteHypotheticalExactOutput(address sender, QuoteHypotheticalExactOutputParams calldata params)
     external
     returns (uint256 amountIn, uint256 amountOut)
   {
@@ -277,6 +310,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
       bool zeroForOne = MetricOmmSwapPath.resolveZeroForOneBitmap(params.zeroForOneBitMap, hop);
       (uint256 hopAmountIn, uint256 hopAmountOut) = quoteHypotheticalExactOutputSingle(
         params.pools[hop],
+        sender,
         address(this),
         zeroForOne,
         amount,
@@ -316,6 +350,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
 
   function _quoteLiveSwap(
     address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     int128 amountSpecified,
@@ -325,6 +360,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
     (uint128 bidPriceX64, uint128 askPriceX64, uint128 referencePriceX64) = _resolveLivePricesX64(pool);
     return _quoteSwap(
       pool,
+      sender,
       recipient,
       zeroForOne,
       amountSpecified,
@@ -338,6 +374,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
 
   function _quoteSwap(
     address pool,
+    address sender,
     address recipient,
     bool zeroForOne,
     int128 amountSpecified,
@@ -349,6 +386,7 @@ contract MetricOmmSwapQuoter is IMetricOmmSwapQuoter {
   ) internal returns (int128 amount0Delta, int128 amount1Delta) {
     try IMetricOmmPoolActions(pool)
       .simulateSwapAndRevert(
+        sender == address(0) ? msg.sender : sender,
         recipient,
         zeroForOne,
         amountSpecified,
