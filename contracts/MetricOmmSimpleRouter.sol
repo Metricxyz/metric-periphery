@@ -81,10 +81,50 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     nonReentrant
     returns (uint256 amountOut)
   {
+    amountOut = _exactInputSingle(params, msg.sender);
+  }
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  function exactInputSingleWithFallback(ExactInputSingleWithFallbackParams calldata params)
+    external
+    payable
+    nonReentrant
+    returns (uint256 amountOut, bool usedFallback)
+  {
+    _checkDeadline(params.primary.deadline);
+    _validateFallback(params.fallbackRouter, params.fallbackCallData);
+
+    bytes memory attempt = abi.encodeCall(this.exactInputSingleAttempt, (params.primary, msg.sender));
+    (bool primarySuccess, bytes memory primaryReason) =
+      _primaryAttempt(attempt, params.primaryGasLimit, params.gasReserve);
+    if (primarySuccess) return (abi.decode(primaryReason, (uint256)), false);
+
+    try this.fallbackSwapAttempt(_fallbackTermsExactInSingle(params, msg.sender), params.fallbackCallData) returns (
+      uint256 fallbackOut, uint256
+    ) {
+      return (fallbackOut, true);
+    } catch (bytes memory fallbackReason) {
+      revert BothRoutesFailed(primaryReason, fallbackReason);
+    }
+  }
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  function exactInputSingleAttempt(ExactInputSingleParams calldata params, address payer)
+    external
+    returns (uint256 amountOut)
+  {
+    if (msg.sender != address(this)) revert OnlySelf();
+    amountOut = _exactInputSingle(params, payer);
+  }
+
+  function _exactInputSingle(ExactInputSingleParams calldata params, address payer)
+    internal
+    returns (uint256 amountOut)
+  {
     _checkDeadline(params.deadline);
     uint128 priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(params.zeroForOne, params.priceLimitX64);
 
-    _setNextCallbackContext(params.pool, CALLBACK_MODE_JUST_PAY, msg.sender, params.tokenIn);
+    _setNextCallbackContext(params.pool, CALLBACK_MODE_JUST_PAY, payer, params.tokenIn);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
       .swap(
         params.recipient,
@@ -123,10 +163,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   {
     _checkDeadline(params.primary.deadline);
     _validatePath(params.primary.tokens, params.primary.pools, params.primary.extensionDatas);
-    if (params.fallbackRouter == address(this) || params.fallbackRouter.code.length == 0) {
-      revert InvalidFallbackRouter(params.fallbackRouter);
-    }
-    if (params.fallbackCallData.length == 0) revert EmptyFallbackCallData();
+    _validateFallback(params.fallbackRouter, params.fallbackCallData);
 
     // Encode before measuring gas: path size must not eat into the attempt's budget.
     bytes memory attempt = abi.encodeCall(this.exactInputAttempt, (params.primary, msg.sender));
@@ -238,6 +275,30 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     amountSpent = terms.amountIn - unspent;
   }
 
+  function _validateFallback(address fallbackRouter, bytes calldata callData) private view {
+    if (fallbackRouter == address(this) || fallbackRouter.code.length == 0) {
+      revert InvalidFallbackRouter(fallbackRouter);
+    }
+    if (callData.length == 0) revert EmptyFallbackCallData();
+  }
+
+  function _fallbackTermsExactInSingle(ExactInputSingleWithFallbackParams calldata params, address payer)
+    internal
+    pure
+    returns (FallbackSwapTerms memory terms)
+  {
+    terms = FallbackSwapTerms({
+      fallbackRouter: params.fallbackRouter,
+      tokenIn: params.primary.tokenIn,
+      tokenOut: params.primary.tokenOut,
+      recipient: params.primary.recipient,
+      payer: payer,
+      amountIn: params.primary.amountIn,
+      amountOutMinimum: params.primary.amountOutMinimum,
+      deadline: params.primary.deadline
+    });
+  }
+
   function _fallbackTermsExactIn(ExactInputWithFallbackParams calldata params, address payer)
     internal
     pure
@@ -267,6 +328,23 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
       fallbackRouter: params.fallbackRouter,
       tokenIn: params.primary.tokens[0],
       tokenOut: params.primary.tokens[params.primary.tokens.length - 1],
+      recipient: params.primary.recipient,
+      payer: payer,
+      amountIn: params.primary.amountInMaximum,
+      amountOutMinimum: params.primary.amountOut,
+      deadline: params.primary.deadline
+    });
+  }
+
+  function _fallbackTermsExactOutSingle(ExactOutputSingleWithFallbackParams calldata params, address payer)
+    internal
+    pure
+    returns (FallbackSwapTerms memory terms)
+  {
+    terms = FallbackSwapTerms({
+      fallbackRouter: params.fallbackRouter,
+      tokenIn: params.primary.tokenIn,
+      tokenOut: params.primary.tokenOut,
       recipient: params.primary.recipient,
       payer: payer,
       amountIn: params.primary.amountInMaximum,
@@ -341,11 +419,51 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     nonReentrant
     returns (uint256 amountIn)
   {
+    amountIn = _exactOutputSingle(params, msg.sender);
+  }
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  function exactOutputSingleWithFallback(ExactOutputSingleWithFallbackParams calldata params)
+    external
+    payable
+    nonReentrant
+    returns (uint256 amountIn, bool usedFallback)
+  {
+    _checkDeadline(params.primary.deadline);
+    _validateFallback(params.fallbackRouter, params.fallbackCallData);
+
+    bytes memory attempt = abi.encodeCall(this.exactOutputSingleAttempt, (params.primary, msg.sender));
+    (bool primarySuccess, bytes memory primaryReason) =
+      _primaryAttempt(attempt, params.primaryGasLimit, params.gasReserve);
+    if (primarySuccess) return (abi.decode(primaryReason, (uint256)), false);
+
+    try this.fallbackSwapAttempt(_fallbackTermsExactOutSingle(params, msg.sender), params.fallbackCallData) returns (
+      uint256, uint256 fallbackIn
+    ) {
+      return (fallbackIn, true);
+    } catch (bytes memory fallbackReason) {
+      revert BothRoutesFailed(primaryReason, fallbackReason);
+    }
+  }
+
+  /// @inheritdoc IMetricOmmSimpleRouter
+  function exactOutputSingleAttempt(ExactOutputSingleParams calldata params, address payer)
+    external
+    returns (uint256 amountIn)
+  {
+    if (msg.sender != address(this)) revert OnlySelf();
+    amountIn = _exactOutputSingle(params, payer);
+  }
+
+  function _exactOutputSingle(ExactOutputSingleParams calldata params, address payer)
+    internal
+    returns (uint256 amountIn)
+  {
     _checkDeadline(params.deadline);
     uint128 priceLimitX64 = MetricOmmSwapPath.normalizePriceLimit(params.zeroForOne, params.priceLimitX64);
 
     int128 expectedAmountOut = MetricOmmSwapInputs.asAmountSpecifiedIn(params.amountOut);
-    _setNextCallbackContext(params.pool, CALLBACK_MODE_JUST_PAY, msg.sender, params.tokenIn);
+    _setNextCallbackContext(params.pool, CALLBACK_MODE_JUST_PAY, payer, params.tokenIn);
     (int128 amount0Delta, int128 amount1Delta) = IMetricOmmPoolActions(params.pool)
       .swap(params.recipient, params.zeroForOne, -expectedAmountOut, priceLimitX64, "", params.extensionData);
     int128 amountOut = MetricOmmSwapResults.extractAmountOut(params.zeroForOne, amount0Delta, amount1Delta);
@@ -382,10 +500,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   {
     _checkDeadline(params.primary.deadline);
     _validatePath(params.primary.tokens, params.primary.pools, params.primary.extensionDatas);
-    if (params.fallbackRouter == address(this) || params.fallbackRouter.code.length == 0) {
-      revert InvalidFallbackRouter(params.fallbackRouter);
-    }
-    if (params.fallbackCallData.length == 0) revert EmptyFallbackCallData();
+    _validateFallback(params.fallbackRouter, params.fallbackCallData);
 
     // Encode before measuring gas: path size must not eat into the attempt's budget.
     bytes memory attempt = abi.encodeCall(this.exactOutputAttempt, (params.primary, msg.sender));

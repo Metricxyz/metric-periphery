@@ -114,6 +114,17 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
     bytes extensionData;
   }
 
+  /// @notice Single-hop exact-input swap with an external fallback route.
+  /// @dev The fallback uses the primary token pair, input amount, minimum output, recipient, and deadline.
+  ///      The primary attempt preserves `priceLimitX64` and `extensionData`.
+  struct ExactInputSingleWithFallbackParams {
+    ExactInputSingleParams primary;
+    address fallbackRouter;
+    bytes fallbackCallData;
+    uint256 gasReserve;
+    uint256 primaryGasLimit;
+  }
+
   /// @notice Multihop exact-input swap parameters.
   /// @dev Slippage protection is `amountOutMinimum` only; each hop uses an open price limit.
   ///      The caller must ensure `tokens` and `pools` describe a valid connected route.
@@ -212,6 +223,17 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
     bytes extensionData;
   }
 
+  /// @notice Single-hop exact-output swap with an external fallback route.
+  /// @dev The fallback uses the primary token pair, exact output, maximum input, recipient, and deadline.
+  ///      The primary attempt preserves `priceLimitX64` and `extensionData`.
+  struct ExactOutputSingleWithFallbackParams {
+    ExactOutputSingleParams primary;
+    address fallbackRouter;
+    bytes fallbackCallData;
+    uint256 gasReserve;
+    uint256 primaryGasLimit;
+  }
+
   /// @notice Multihop exact-output swap parameters.
   /// @dev Slippage protection is `amountInMaximum` only; each hop uses an open price limit.
   ///      The caller must ensure `tokens` and `pools` describe a valid connected route.
@@ -265,6 +287,15 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
 
   function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
 
+  function exactInputSingleWithFallback(ExactInputSingleWithFallbackParams calldata params)
+    external
+    payable
+    returns (uint256 amountOut, bool usedFallback);
+
+  function exactInputSingleAttempt(ExactInputSingleParams calldata params, address payer)
+    external
+    returns (uint256 amountOut);
+
   function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 
   function exactInputWithFallback(ExactInputWithFallbackParams calldata params)
@@ -281,6 +312,15 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   // ============ Mutating: exact output ============
 
   function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn);
+
+  function exactOutputSingleWithFallback(ExactOutputSingleWithFallbackParams calldata params)
+    external
+    payable
+    returns (uint256 amountIn, bool usedFallback);
+
+  function exactOutputSingleAttempt(ExactOutputSingleParams calldata params, address payer)
+    external
+    returns (uint256 amountIn);
 
   function exactOutput(ExactOutputParams calldata params) external payable returns (uint256 amountIn);
 

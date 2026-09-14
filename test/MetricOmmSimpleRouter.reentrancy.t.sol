@@ -116,28 +116,32 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
   }
 
   function test_fallbackCannotReenterAnySwapOrPaymentEntrypoint() public {
-    bytes[] memory probes = new bytes[](14);
+    bytes[] memory probes = new bytes[](16);
     bytes[] memory payments = _paymentProbes();
     for (uint256 i; i < 3; ++i) {
       probes[i] = payments[i];
     }
     IMetricOmmSimpleRouter.ExactInputSingleParams memory inputSingle;
+    IMetricOmmSimpleRouter.ExactInputSingleWithFallbackParams memory inputSingleFallback;
     IMetricOmmSimpleRouter.ExactOutputSingleParams memory outputSingle;
+    IMetricOmmSimpleRouter.ExactOutputSingleWithFallbackParams memory outputSingleFallback;
     IMetricOmmSimpleRouter.ExactOutputParams memory output;
     IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory outputFallback;
     probes[3] = abi.encodeCall(router.exactInputSingle, (inputSingle));
-    probes[4] = abi.encodeCall(router.exactInput, (_primary(_deadline())));
-    probes[5] = abi.encodeCall(router.exactInputWithFallback, (_fallbackParams()));
-    probes[6] = abi.encodeCall(router.exactOutputSingle, (outputSingle));
-    probes[7] = abi.encodeCall(router.exactOutput, (output));
-    probes[8] = abi.encodeCall(router.exactOutputWithFallback, (outputFallback));
-    probes[9] = abi.encodeCall(router.multicall, (payments));
-    probes[10] = abi.encodeCall(router.selfPermit, (address(attacker), 1, _deadline(), 0, bytes32(0), bytes32(0)));
-    probes[11] =
+    probes[4] = abi.encodeCall(router.exactInputSingleWithFallback, (inputSingleFallback));
+    probes[5] = abi.encodeCall(router.exactInput, (_primary(_deadline())));
+    probes[6] = abi.encodeCall(router.exactInputWithFallback, (_fallbackParams()));
+    probes[7] = abi.encodeCall(router.exactOutputSingle, (outputSingle));
+    probes[8] = abi.encodeCall(router.exactOutputSingleWithFallback, (outputSingleFallback));
+    probes[9] = abi.encodeCall(router.exactOutput, (output));
+    probes[10] = abi.encodeCall(router.exactOutputWithFallback, (outputFallback));
+    probes[11] = abi.encodeCall(router.multicall, (payments));
+    probes[12] = abi.encodeCall(router.selfPermit, (address(attacker), 1, _deadline(), 0, bytes32(0), bytes32(0)));
+    probes[13] =
       abi.encodeCall(router.selfPermitAllowed, (address(attacker), 0, _deadline(), 0, bytes32(0), bytes32(0)));
-    probes[12] =
+    probes[14] =
       abi.encodeCall(router.selfPermitIfNecessary, (address(attacker), 1, _deadline(), 0, bytes32(0), bytes32(0)));
-    probes[13] = abi.encodeCall(
+    probes[15] = abi.encodeCall(
       router.selfPermitAllowedIfNecessary, (address(attacker), 0, _deadline(), 0, bytes32(0), bytes32(0))
     );
     attacker.configure(probes);

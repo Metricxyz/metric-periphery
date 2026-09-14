@@ -63,11 +63,95 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     });
   }
 
+  function _primarySingle(address poolAddr, uint128 minOut, uint256 deadline)
+    internal
+    view
+    returns (IMetricOmmSimpleRouter.ExactInputSingleParams memory)
+  {
+    return IMetricOmmSimpleRouter.ExactInputSingleParams({
+      pool: poolAddr,
+      tokenIn: address(weth),
+      tokenOut: address(token1),
+      zeroForOne: true,
+      amountIn: AMOUNT_IN,
+      amountOutMinimum: minOut,
+      recipient: recipient,
+      deadline: deadline,
+      priceLimitX64: 0,
+      extensionData: ""
+    });
+  }
+
+  function _paramsSingle(IMetricOmmSimpleRouter.ExactInputSingleParams memory primary, bytes memory callData)
+    internal
+    view
+    returns (IMetricOmmSimpleRouter.ExactInputSingleWithFallbackParams memory)
+  {
+    return IMetricOmmSimpleRouter.ExactInputSingleWithFallbackParams({
+      primary: primary,
+      fallbackRouter: address(aggregator),
+      fallbackCallData: callData,
+      gasReserve: GAS_RESERVE,
+      primaryGasLimit: 500_000
+    });
+  }
+
   function _expired() internal view returns (uint256) {
     return block.timestamp - 1;
   }
 
   // ============ Happy paths ============
+
+  function test_exactInputSingleWithFallback_primaryFillsAndSkipsAggregator() public {
+    uint256 aggregatorWethBefore = weth.balanceOf(address(aggregator));
+    uint256 recipientBefore = token1.balanceOf(recipient);
+
+    vm.prank(swapper);
+    (uint256 amountOut, bool usedFallback) = router.exactInputSingleWithFallback(
+      _paramsSingle(_primarySingle(address(pool), 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
+    );
+
+    assertFalse(usedFallback);
+    assertGt(amountOut, 0);
+    assertEq(token1.balanceOf(recipient) - recipientBefore, amountOut);
+    assertEq(weth.balanceOf(address(aggregator)), aggregatorWethBefore);
+    _assertRouterEmpty();
+  }
+
+  function test_exactInputSingleWithFallback_preservesPriceLimitAndFallsBack() public {
+    IMetricOmmSimpleRouter.ExactInputSingleWithFallbackParams memory params = _paramsSingle(
+      _primarySingle(address(pool), FALLBACK_OUT, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT)
+    );
+    // The pool starts at Q64, so this lower bound leaves no room for a token0 -> token1 fill.
+    // The single-hop primary must preserve it, fail its minimum-output check, and use the fallback.
+    params.primary.priceLimitX64 = uint128(Q64);
+    uint256 recipientBefore = token1.balanceOf(recipient);
+
+    vm.prank(swapper);
+    (uint256 amountOut, bool usedFallback) = router.exactInputSingleWithFallback(params);
+
+    assertTrue(usedFallback);
+    assertEq(amountOut, FALLBACK_OUT);
+    assertEq(token1.balanceOf(recipient) - recipientBefore, FALLBACK_OUT);
+    assertEq(weth.allowance(address(router), address(aggregator)), 0);
+    _assertRouterEmpty();
+  }
+
+  function test_exactInputSingleWithFallback_enforcesPrimaryMinimum() public {
+    IMetricOmmSimpleRouter.ExactInputSingleWithFallbackParams memory params = _paramsSingle(
+      _primarySingle(UNAVAILABLE_POOL, FALLBACK_OUT + 1, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT)
+    );
+
+    vm.prank(swapper);
+    vm.expectPartialRevert(IMetricOmmSimpleRouter.BothRoutesFailed.selector);
+    router.exactInputSingleWithFallback(params);
+  }
+
+  function test_exactInputSingleAttempt_revertsOnlySelf() public {
+    vm.prank(swapper);
+    vm.expectRevert(IMetricOmmSimpleRouter.OnlySelf.selector);
+    router.exactInputSingleAttempt(_primarySingle(address(pool), 0, _deadline()), swapper);
+  }
 
   function test_exactInputWithFallback_primaryFillsAndSkipsAggregator() public {
     uint256 token1Before = token1.balanceOf(recipient);
@@ -560,6 +644,78 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
       gasReserve: GAS_RESERVE,
       primaryGasLimit: 500_000
     });
+  }
+
+  function _primaryOutSingle(address poolAddr, uint128 amountInMax, uint256 deadline)
+    internal
+    view
+    returns (IMetricOmmSimpleRouter.ExactOutputSingleParams memory)
+  {
+    return IMetricOmmSimpleRouter.ExactOutputSingleParams({
+      pool: poolAddr,
+      tokenIn: address(weth),
+      tokenOut: address(token1),
+      zeroForOne: true,
+      amountOut: EXACT_OUT,
+      amountInMaximum: amountInMax,
+      recipient: recipient,
+      deadline: deadline,
+      priceLimitX64: 0,
+      extensionData: ""
+    });
+  }
+
+  function _paramsOutSingle(IMetricOmmSimpleRouter.ExactOutputSingleParams memory primary, bytes memory callData)
+    internal
+    view
+    returns (IMetricOmmSimpleRouter.ExactOutputSingleWithFallbackParams memory)
+  {
+    return IMetricOmmSimpleRouter.ExactOutputSingleWithFallbackParams({
+      primary: primary,
+      fallbackRouter: address(aggregator),
+      fallbackCallData: callData,
+      gasReserve: GAS_RESERVE,
+      primaryGasLimit: 500_000
+    });
+  }
+
+  function test_exactOutputSingleWithFallback_primaryFillsAndSkipsAggregator() public {
+    uint256 aggregatorWethBefore = weth.balanceOf(address(aggregator));
+    vm.prank(swapper);
+    (uint256 amountIn, bool usedFallback) = router.exactOutputSingleWithFallback(
+      _paramsOutSingle(_primaryOutSingle(address(pool), MAX_IN, _deadline()), _fallbackCallData(MAX_IN, EXACT_OUT))
+    );
+
+    assertFalse(usedFallback);
+    assertGt(amountIn, 0);
+    assertLe(amountIn, MAX_IN);
+    assertEq(weth.balanceOf(address(aggregator)), aggregatorWethBefore);
+    _assertRouterEmpty();
+  }
+
+  function test_exactOutputSingleWithFallback_preservesPriceLimitAndRefunds() public {
+    uint128 actualSpend = MAX_IN / 2;
+    IMetricOmmSimpleRouter.ExactOutputSingleWithFallbackParams memory params = _paramsOutSingle(
+      _primaryOutSingle(address(pool), MAX_IN, _deadline()), _fallbackCallData(actualSpend, EXACT_OUT)
+    );
+    // The pool starts at Q64, so this lower bound prevents the requested token0 -> token1 output.
+    params.primary.priceLimitX64 = uint128(Q64);
+    uint256 payerBefore = weth.balanceOf(swapper);
+
+    vm.prank(swapper);
+    (uint256 amountIn, bool usedFallback) = router.exactOutputSingleWithFallback(params);
+
+    assertTrue(usedFallback);
+    assertEq(amountIn, actualSpend);
+    assertEq(payerBefore - weth.balanceOf(swapper), actualSpend);
+    assertEq(weth.allowance(address(router), address(aggregator)), 0);
+    _assertRouterEmpty();
+  }
+
+  function test_exactOutputSingleAttempt_revertsOnlySelf() public {
+    vm.prank(swapper);
+    vm.expectRevert(IMetricOmmSimpleRouter.OnlySelf.selector);
+    router.exactOutputSingleAttempt(_primaryOutSingle(address(pool), MAX_IN, _deadline()), swapper);
   }
 
   function test_exactOutputWithFallback_primaryFillsAndSkipsAggregator() public {
