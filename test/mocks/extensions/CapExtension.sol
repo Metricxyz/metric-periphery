@@ -5,15 +5,20 @@ pragma solidity ^0.8.35;
 import {IMetricOmmExtensions} from "@metric-core/interfaces/extensions/IMetricOmmExtensions.sol";
 import {LiquidityDelta} from "@metric-core/types/PoolOperation.sol";
 
-/// @notice Test-only extension that blocks any swap whose `amountSpecified` magnitude exceeds a configured cap,
-///         so ladder-building tests can exercise the binary-search fallback around a size-dependent extension gate.
+/// @notice Test-only extension with independent caps on requested amounts and actual swap output.
 contract CapExtension is IMetricOmmExtensions {
   error CapExceeded(uint256 magnitude, uint256 capExternal);
+  error OutputCapExceeded(uint256 amountOut, uint256 outputCapExternal);
 
   uint256 public capExternal = type(uint256).max;
+  uint256 public outputCapExternal = type(uint256).max;
 
   function setCap(uint256 cap) external {
     capExternal = cap;
+  }
+
+  function setOutputCap(uint256 cap) external {
+    outputCapExternal = cap;
   }
 
   function initialize(address, bytes calldata) external pure returns (bytes4) {
@@ -40,7 +45,7 @@ contract CapExtension is IMetricOmmExtensions {
   function afterSwap(
     address,
     address,
-    bool,
+    bool zeroForOne,
     int128,
     uint128,
     uint256,
@@ -48,11 +53,13 @@ contract CapExtension is IMetricOmmExtensions {
     uint128,
     uint128,
     uint128,
-    int128,
-    int128,
+    int128 amount0Delta,
+    int128 amount1Delta,
     uint256,
     bytes calldata
-  ) external pure returns (bytes4) {
+  ) external view returns (bytes4) {
+    uint256 amountOut = uint256(-int256(zeroForOne ? amount1Delta : amount0Delta));
+    if (amountOut > outputCapExternal) revert OutputCapExceeded(amountOut, outputCapExternal);
     return IMetricOmmExtensions.afterSwap.selector;
   }
 

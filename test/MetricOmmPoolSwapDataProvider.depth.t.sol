@@ -5,6 +5,7 @@ pragma solidity ^0.8.35;
 
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {MetricOmmPool} from "@metric-core/MetricOmmPool.sol";
+import {PoolStateLibrary} from "@metric-core/libraries/PoolStateLibrary.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {MetricOmmPoolDataProvider} from "../contracts/lens/MetricOmmPoolDataProvider.sol";
 import {LiquidityLadder} from "../contracts/libraries/LiquidityLadder.sol";
@@ -53,6 +54,56 @@ contract MetricOmmPoolDataProviderDepthTest is MetricOmmPoolDataProviderTestBase
 
   function testFuzz_liquidityDepth_vsSimulate_maxBinsPerSide255(uint256 seed) public {
     _liquidityDepthVsSimulateScenario(seed, 255);
+  }
+
+  function test_liquidityDepthLive_partialCurrentBin_asks() public {
+    _assertPartialBinDepth(false, true);
+  }
+
+  function test_liquidityDepthHypothetical_partialCurrentBin_asks() public {
+    _assertPartialBinDepth(false, false);
+  }
+
+  function test_liquidityDepthLive_partialCurrentBin_bids() public {
+    _assertPartialBinDepth(true, true);
+  }
+
+  function test_liquidityDepthHypothetical_partialCurrentBin_bids() public {
+    _assertPartialBinDepth(true, false);
+  }
+
+  function _assertPartialBinDepth(bool zeroForOne, bool live) internal {
+    (, int16 initialBin,,,,,) = PoolStateLibrary._slot0(address(pool));
+    (uint104 initialToken0,,,,) = PoolStateLibrary._binState(address(pool), initialBin);
+    _routerExactOutput(router, address(pool), false, uint256(initialToken0) * 2 / 5);
+
+    (, int16 currentBin, uint104 position,,,,) = PoolStateLibrary._slot0(address(pool));
+    assertEq(currentBin, initialBin);
+    assertGt(position, 0);
+    assertLt(position, type(uint104).max);
+
+    (uint128 bid, uint128 ask, uint128 referencePrice) = oracle.getQuote();
+    LiquidityLadder.LiquidityDepth memory depth = live
+      ? helper.getLiquidityDepthLive(address(pool), 2)
+      : helper.getLiquidityDepthHypothetical(address(pool), 2, bid, ask, referencePrice);
+    LiquidityLadder.DepthLevel[] memory levels = zeroForOne ? depth.bids : depth.asks;
+    assertGe(levels.length, 2);
+
+    uint256 cumulativeOut;
+    for (uint256 i; i < 2; i++) {
+      int16 expectedBin = currentBin + (zeroForOne ? -int16(uint16(i)) : int16(uint16(i)));
+      assertEq(levels[i].binIdx, expectedBin);
+      (uint104 token0Before, uint104 token1Before,,,) = PoolStateLibrary._binState(address(pool), expectedBin);
+      uint256 remaining = zeroForOne ? token1Before : token0Before;
+      assertGt(remaining, 0);
+      assertEq(levels[i].amountAvailableInBin, remaining, "depth must include the full remaining balance");
+      assertEq(levels[i].amountTradeableInBin, remaining, "without extensions, tradeable is equal to available");
+      cumulativeOut += remaining;
+      assertEq(levels[i].cumulativeOut, cumulativeOut, "cumulative is the sum of previous and current available");
+      _routerExactOutput(router, address(pool), zeroForOne, levels[i].amountTradeableInBin);
+      (uint104 token0After, uint104 token1After,,,) = PoolStateLibrary._binState(address(pool), expectedBin);
+      assertEq(zeroForOne ? token1After : token0After, 0, "trading a full row must exhaust its bin");
+    }
   }
 
   function _liquidityDepthVsSimulateScenario(uint256 seed, uint8 maxBinsPerSide) internal {
