@@ -113,8 +113,6 @@ library LiquidityLadder {
   /// @dev Q64.64 fixed-point scale for marginal and execution prices (token1 per token0).
   uint256 internal constant Q64 = 1 << 64;
 
-  uint256 internal constant MAX_POS_U104 = type(uint104).max;
-
   /// @dev Cap on bisection probes per failing bin: start at the midpoint of the bin's range, halve on each
   ///      probe. If none of them succeed, the bin is treated as having nothing tradable.
   uint256 internal constant MAX_BINARY_SEARCH_ITERATIONS = 20;
@@ -250,10 +248,7 @@ library LiquidityLadder {
     lowerEffPriceX64 = FeeMath.effectivePriceX64(lowerReferencePriceX64, buyFeeX64, false);
     upperEffPriceX64 = FeeMath.effectivePriceX64(upperReferencePriceX64, buyFeeX64, false);
 
-    uint256 amountScaled = binIdx == env.curBinIdx
-      ? Math.mulDiv(uint256(t0), MAX_POS_U104 - uint256(env.curPosInBin), MAX_POS_U104, Math.Rounding.Floor)
-      : uint256(t0);
-    amountAvailableInBin = _toExternal(amountScaled, env.token0ScaleMultiplier);
+    amountAvailableInBin = _toExternal(uint256(t0), env.token0ScaleMultiplier);
   }
 
   /// @dev Fee-adjusted bounds and raw tradeable amount for one bid-side bin. `lowerDistE6` must already be this
@@ -276,10 +271,7 @@ library LiquidityLadder {
     lowerEffPriceX64 = FeeMath.effectivePriceX64(lowerReferencePriceX64, sellFeeX64, true);
     upperEffPriceX64 = FeeMath.effectivePriceX64(upperReferencePriceX64, sellFeeX64, true);
 
-    uint256 amountScaled = binIdx == env.curBinIdx
-      ? Math.mulDiv(uint256(t1), uint256(env.curPosInBin), MAX_POS_U104, Math.Rounding.Floor)
-      : uint256(t1);
-    amountAvailableInBin = _toExternal(amountScaled, env.token1ScaleMultiplier);
+    amountAvailableInBin = _toExternal(uint256(t1), env.token1ScaleMultiplier);
   }
 
   /// @dev A bin's own length, in E6. The caller derives a lower bin's lower-bound distance from the bin above's
