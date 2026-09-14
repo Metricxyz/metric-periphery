@@ -135,7 +135,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     if (primarySuccess) {
       return (abi.decode(primaryReason, (uint256)), false);
     } else {
-      try this.fallbackSwapAttempt(_fallbackTerms(params, msg.sender), params.fallbackCallData) returns (
+      try this.fallbackSwapAttempt(_fallbackTermsExactIn(params, msg.sender), params.fallbackCallData) returns (
         uint256 fallbackOut, uint256
       ) {
         return (fallbackOut, true);
@@ -238,7 +238,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     amountSpent = terms.amountIn - unspent;
   }
 
-  function _fallbackTerms(ExactInputWithFallbackParams calldata params, address payer)
+  function _fallbackTermsExactIn(ExactInputWithFallbackParams calldata params, address payer)
     internal
     pure
     returns (FallbackSwapTerms memory terms)
@@ -255,7 +255,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     });
   }
 
-  /// @dev Exact-output counterpart of `_fallbackTerms`. `amountIn` carries the maximum spend rather than an exact
+  /// @dev Exact-output counterpart of `_fallbackTermsExactIn`. `amountIn` carries the maximum spend rather than an exact
   ///      one, and `amountOutMinimum` carries the exact output required, which `_fallbackSwap` enforces as a floor.
   ///      An aggregator that delivers exactly `amountOut` therefore clears it, and its unspent input is refunded.
   function _fallbackTermsExactOut(ExactOutputWithFallbackParams calldata params, address payer)
