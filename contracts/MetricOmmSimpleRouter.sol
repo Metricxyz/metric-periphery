@@ -28,16 +28,11 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   /// @param callbackMode Unrecognized mode read from transient storage.
   error InvalidCallbackMode(uint8 callbackMode);
 
-  /// @notice External aggregator used as the fallback leg of `exactInputWithFallback` and
-  ///         `exactOutputWithFallback`, e.g. the 0x AllowanceHolder at
-  ///         0x0000000000001fF3684f28c67538d4D072C22734. Immutable, so the only address this router can ever call
-  ///         with caller-supplied calldata is fixed at deployment. AllowanceHolder can forward to an arbitrary
-  ///         target encoded in that calldata; the immutable address is not a downstream target allowlist. `address(0)` disables the fallback leg.
-  /// @dev    The target must be an aggregator that both holds the allowance and receives the call. 0x
-  ///         AllowanceHolder satisfies this: it is the allowance spender and `transaction.to` on the
-  ///         `/swap/allowance-holder` endpoints, and the rotating Settler travels inside the calldata as the
-  ///         `target` argument of `exec`, so this address does not change when 0x redeploys. Aggregators that
-  ///         split the approval target from the call target cannot be used without also making that split here.
+  /// @notice Immutable external aggregator used by the fallback swap entrypoints.
+  ///         `address(0)` disables fallback execution. The target may forward to other contracts,
+  ///         so fixing this address does not restrict every downstream call.
+  /// @dev The aggregator must both receive the call and spend the input approved to this address.
+  ///      Aggregators with separate approval and execution targets require a different adapter.
   address internal immutable FALLBACK_ROUTER;
 
   constructor(address weth, address factory, address fallbackRouter)

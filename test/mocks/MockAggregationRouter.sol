@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title MockAggregationRouter
-/// @notice Stand-in for an external aggregator such as KyberSwap MetaAggregationRouterV2.
+/// @notice Provider-neutral external aggregator with configurable settlement and return data.
 /// @dev Mirrors the funding model that matters to the periphery router: the aggregator pulls the input from its
 ///      own `msg.sender` rather than through a swap callback, and pays the output to an encoded receiver. Input
 ///      pulled and output paid are supplied separately so a test can make the leg spend less than it was approved.

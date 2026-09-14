@@ -5,17 +5,20 @@ import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {IPeripheryPayments} from "../contracts/interfaces/IPeripheryPayments.sol";
-import {PinnedAllowanceHolder} from "./mocks/PinnedAllowanceHolder.sol";
-import {IAllowanceHolder} from "./vendor/zero-ex/src/allowanceholder/IAllowanceHolder.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 contract RouterReentryTarget {
-  address public immutable router;
+  address public router;
   bytes[] private probes;
   uint256 public blocked;
 
   constructor(address router_) {
+    router = router_;
+  }
+
+  function initializeRouter(address router_) external {
+    require(router == address(0));
     router = router_;
   }
 
@@ -36,10 +39,10 @@ contract RouterReentryTarget {
     }
   }
 
-  function settle(address holder, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut) external {
-    require(msg.sender == holder);
+  function settle(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut) external {
+    require(msg.sender == router);
     probe();
-    IAllowanceHolder(holder).transferFrom(tokenIn, router, address(this), amountIn);
+    IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
     IERC20(tokenOut).transfer(router, amountOut);
   }
 
@@ -80,14 +83,13 @@ contract RouterReentryToken is RouterReentryTarget {
 }
 
 contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
-  PinnedAllowanceHolder internal holder;
   RouterReentryTarget internal attacker;
 
   function setUp() public override {
     super.setUp();
-    holder = new PinnedAllowanceHolder();
-    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(holder));
-    attacker = new RouterReentryTarget(address(router));
+    attacker = new RouterReentryTarget(address(0));
+    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(attacker));
+    attacker.initializeRouter(address(router));
     token1.mint(address(attacker), 1_000_000);
     vm.prank(swapper);
     weth.approve(address(router), type(uint256).max);
@@ -112,16 +114,7 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
     p.fallbackDeadline = _deadline();
     p.primaryGasLimit = 500_000;
     p.gasReserve = 1_000_000;
-    p.fallbackCallData = abi.encodeCall(
-      IAllowanceHolder.exec,
-      (
-        address(attacker),
-        address(weth),
-        2_000,
-        payable(address(attacker)),
-        abi.encodeCall(attacker.settle, (address(holder), address(weth), address(token1), 2_000, 1_000))
-      )
-    );
+    p.fallbackCallData = abi.encodeCall(attacker.settle, (address(weth), address(token1), 2_000, 1_000));
   }
 
   function _paymentProbes() internal view returns (bytes[] memory probes) {
@@ -131,7 +124,7 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
     probes[2] = abi.encodeCall(router.unwrapWETH9, (0, address(attacker)));
   }
 
-  function test_allowanceHolderCannotReenterAnySwapOrPaymentEntrypoint() public {
+  function test_fallbackCannotReenterAnySwapOrPaymentEntrypoint() public {
     bytes[] memory probes = new bytes[](14);
     bytes[] memory payments = _paymentProbes();
     for (uint256 i; i < 3; ++i) {
@@ -170,7 +163,7 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
     assertEq(address(router).balance, 10_000);
     assertEq(token1.balanceOf(address(router)), 777);
     assertEq(weth.balanceOf(address(router)), 555);
-    assertEq(weth.allowance(address(router), address(holder)), 0);
+    assertEq(weth.allowance(address(router), address(attacker)), 0);
     assertEq(token1.balanceOf(recipient), out);
   }
 
