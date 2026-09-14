@@ -11,6 +11,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
   uint128 internal constant AMOUNT_IN = 2_000;
   uint128 internal constant FALLBACK_OUT = 1_234;
   uint256 internal constant GAS_RESERVE = 300_000;
+  address internal constant UNAVAILABLE_POOL = address(0xBAD);
 
   // ============ Helpers ============
 
@@ -55,11 +56,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     returns (IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory)
   {
     return IMetricOmmSimpleRouter.ExactInputWithFallbackParams({
-      primary: primary,
-      fallbackCallData: callData,
-      fallbackDeadline: _deadline(),
-      gasReserve: GAS_RESERVE,
-      primaryGasLimit: 500_000
+      primary: primary, fallbackCallData: callData, gasReserve: GAS_RESERVE, primaryGasLimit: 500_000
     });
   }
 
@@ -88,14 +85,14 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     _assertRouterEmpty();
   }
 
-  function test_exactInputWithFallback_aggregatorFillsWhenPrimaryExpired() public {
+  function test_exactInputWithFallback_aggregatorFillsWhenPrimaryUnavailable() public {
     uint256 token1Before = token1.balanceOf(recipient);
     uint256 wethBefore = weth.balanceOf(swapper);
     uint256 aggregatorWethBefore = weth.balanceOf(address(aggregator));
 
     vm.prank(swapper);
     (uint256 amountOut, bool usedFallback) = router.exactInputWithFallback(
-      _params(_primary(address(pool), 0, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
     );
 
     assertTrue(usedFallback, "aggregator should fill");
@@ -128,7 +125,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
 
     vm.prank(swapper);
     (, bool usedFallback) = router.exactInputWithFallback(
-      _params(_primary(address(pool), 0, _expired()), _fallbackCallData(partialSpend, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, 0, _deadline()), _fallbackCallData(partialSpend, FALLBACK_OUT))
     );
 
     assertTrue(usedFallback, "aggregator should fill");
@@ -144,7 +141,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     vm.prank(swapper);
     vm.expectPartialRevert(IMetricOmmSimpleRouter.BothRoutesFailed.selector);
     router.exactInputWithFallback(
-      _params(_primary(address(pool), 0, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
     );
   }
 
@@ -153,7 +150,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     vm.prank(swapper);
     vm.expectPartialRevert(IMetricOmmSimpleRouter.BothRoutesFailed.selector);
     router.exactInputWithFallback(
-      _params(_primary(address(pool), FALLBACK_OUT + 1, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, FALLBACK_OUT + 1, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
     );
   }
 
@@ -183,14 +180,58 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     router.exactInputWithFallback(params);
   }
 
-  function test_exactInputWithFallback_revertsExpiredFallbackDeadline() public {
+  function test_exactInputWithFallback_revertsExpiredOriginalDeadline() public {
     IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory params =
-      _params(_primary(address(pool), 0, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
-    params.fallbackDeadline = _expired();
+      _params(_primary(UNAVAILABLE_POOL, 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
+    params.primary.deadline = _expired();
 
     vm.prank(swapper);
-    vm.expectPartialRevert(IMetricOmmSimpleRouter.BothRoutesFailed.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IMetricOmmSimpleRouter.TransactionExpired.selector, params.primary.deadline, block.timestamp
+      )
+    );
     router.exactInputWithFallback(params);
+  }
+
+  function test_exactOutputWithFallback_revertsExpiredOriginalDeadline() public {
+    IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory params =
+      _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _expired()), _fallbackCallData(MAX_IN, EXACT_OUT));
+    vm.prank(swapper);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IMetricOmmSimpleRouter.TransactionExpired.selector, params.primary.deadline, block.timestamp
+      )
+    );
+    router.exactOutputWithFallback(params);
+  }
+
+  function test_exactInputOriginalDeadlineBoundaryAllowsEitherRoute() public {
+    for (uint256 i; i < 2; ++i) {
+      IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory params = _params(
+        _primary(i == 0 ? address(pool) : UNAVAILABLE_POOL, FALLBACK_OUT, block.timestamp),
+        _fallbackCallData(AMOUNT_IN, FALLBACK_OUT)
+      );
+      vm.prank(swapper);
+      (uint256 out, bool usedFallback) = router.exactInputWithFallback(params);
+      assertEq(usedFallback, i == 1);
+      assertGe(out, FALLBACK_OUT);
+    }
+    _assertRouterEmpty();
+  }
+
+  function test_exactOutputOriginalDeadlineBoundaryAllowsEitherRoute() public {
+    for (uint256 i; i < 2; ++i) {
+      IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory params = _paramsOut(
+        _primaryOut(i == 0 ? address(pool) : UNAVAILABLE_POOL, MAX_IN, block.timestamp),
+        _fallbackCallData(MAX_IN, EXACT_OUT)
+      );
+      vm.prank(swapper);
+      (uint256 spent, bool usedFallback) = router.exactOutputWithFallback(params);
+      assertEq(usedFallback, i == 1);
+      assertLe(spent, MAX_IN);
+    }
+    _assertRouterEmpty();
   }
 
   function test_exactInputAttempt_revertsOnlySelf() public {
@@ -254,7 +295,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
 
   function test_insufficientOuterGasCannotSilentlySelectFallback() public {
     IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory params =
-      _params(_primary(address(pool), 0, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
+      _params(_primary(UNAVAILABLE_POOL, 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
     vm.prank(swapper);
     vm.expectPartialRevert(IMetricOmmSimpleRouter.InsufficientGasReserve.selector);
     router.exactInputWithFallback{gas: 600_000}(params);
@@ -314,7 +355,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     uint256 payerEth = swapper.balance;
     vm.prank(swapper);
     (, bool usedFallback) = router.exactInputWithFallback{value: AMOUNT_IN}(
-      _params(_primary(address(pool), FALLBACK_OUT, _expired()), _fallbackCallData(AMOUNT_IN / 2, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, FALLBACK_OUT, _deadline()), _fallbackCallData(AMOUNT_IN / 2, FALLBACK_OUT))
     );
     assertTrue(usedFallback);
     assertEq(swapper.balance, payerEth - AMOUNT_IN);
@@ -327,7 +368,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     uint256 beforeOut = token1.balanceOf(recipient);
     vm.prank(swapper);
     (uint256 out, bool usedFallback) = router.exactInputWithFallback(
-      _params(_primary(address(pool), FALLBACK_OUT, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, FALLBACK_OUT, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
     );
     assertTrue(usedFallback);
     assertEq(out, FALLBACK_OUT);
@@ -352,12 +393,12 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         IMetricOmmSimpleRouter.BothRoutesFailed.selector,
-        abi.encodeWithSelector(IMetricOmmSimpleRouter.TransactionExpired.selector, _expired(), block.timestamp),
+        abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, UNAVAILABLE_POOL),
         expected
       )
     );
     router.exactInputWithFallback(
-      _params(_primary(address(pool), FALLBACK_OUT, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
+      _params(_primary(UNAVAILABLE_POOL, FALLBACK_OUT, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
     );
     assertEq(weth.balanceOf(swapper), payerBefore);
     assertEq(token1.balanceOf(recipient), recipientBefore);
@@ -401,13 +442,13 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
 
   function test_exactInputFallbackRejectsSameTokenPair() public {
     IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory params =
-      _params(_primary(address(pool), 0, _expired()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
+      _params(_primary(UNAVAILABLE_POOL, 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
     params.primary.tokens[1] = params.primary.tokens[0];
     vm.prank(swapper);
     vm.expectRevert(
       abi.encodeWithSelector(
         IMetricOmmSimpleRouter.BothRoutesFailed.selector,
-        abi.encodeWithSelector(IMetricOmmSimpleRouter.TransactionExpired.selector, _expired(), block.timestamp),
+        abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, UNAVAILABLE_POOL),
         abi.encodeWithSelector(IMetricOmmSimpleRouter.SameTokenFallback.selector)
       )
     );
@@ -416,13 +457,13 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
 
   function test_exactOutputFallbackRejectsSameTokenPair() public {
     IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory params =
-      _paramsOut(_primaryOut(address(pool), MAX_IN, _expired()), _fallbackCallData(MAX_IN, EXACT_OUT));
+      _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _deadline()), _fallbackCallData(MAX_IN, EXACT_OUT));
     params.primary.tokens[1] = params.primary.tokens[0];
     vm.prank(swapper);
     vm.expectRevert(
       abi.encodeWithSelector(
         IMetricOmmSimpleRouter.BothRoutesFailed.selector,
-        abi.encodeWithSelector(IMetricOmmSimpleRouter.TransactionExpired.selector, _expired(), block.timestamp),
+        abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidPool.selector, UNAVAILABLE_POOL),
         abi.encodeWithSelector(IMetricOmmSimpleRouter.SameTokenFallback.selector)
       )
     );
@@ -468,11 +509,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     returns (IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory)
   {
     return IMetricOmmSimpleRouter.ExactOutputWithFallbackParams({
-      primary: primary,
-      fallbackCallData: callData,
-      fallbackDeadline: _deadline(),
-      gasReserve: GAS_RESERVE,
-      primaryGasLimit: 500_000
+      primary: primary, fallbackCallData: callData, gasReserve: GAS_RESERVE, primaryGasLimit: 500_000
     });
   }
 
@@ -494,14 +531,14 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
   }
 
   /// @dev The aggregator leg reports what it actually spent, which is the exact-output `amountIn`.
-  function test_exactOutputWithFallback_aggregatorFillsWhenPrimaryExpired() public {
+  function test_exactOutputWithFallback_aggregatorFillsWhenPrimaryUnavailable() public {
     uint128 actualSpend = MAX_IN / 2;
     uint256 token1Before = token1.balanceOf(recipient);
     uint256 wethBefore = weth.balanceOf(swapper);
 
     vm.prank(swapper);
     (uint256 amountIn, bool usedFallback) = router.exactOutputWithFallback(
-      _paramsOut(_primaryOut(address(pool), MAX_IN, _expired()), _fallbackCallData(actualSpend, EXACT_OUT))
+      _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _deadline()), _fallbackCallData(actualSpend, EXACT_OUT))
     );
 
     assertTrue(usedFallback, "aggregator should fill");
@@ -517,7 +554,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     vm.prank(swapper);
     vm.expectPartialRevert(IMetricOmmSimpleRouter.BothRoutesFailed.selector);
     router.exactOutputWithFallback(
-      _paramsOut(_primaryOut(address(pool), MAX_IN, _expired()), _fallbackCallData(MAX_IN, EXACT_OUT - 1))
+      _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _deadline()), _fallbackCallData(MAX_IN, EXACT_OUT - 1))
     );
   }
 
@@ -527,7 +564,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     vm.prank(swapper);
     vm.expectPartialRevert(IMetricOmmSimpleRouter.BothRoutesFailed.selector);
     router.exactOutputWithFallback(
-      _paramsOut(_primaryOut(address(pool), MAX_IN, _expired()), _fallbackCallData(MAX_IN, EXACT_OUT))
+      _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _deadline()), _fallbackCallData(MAX_IN, EXACT_OUT))
     );
   }
 

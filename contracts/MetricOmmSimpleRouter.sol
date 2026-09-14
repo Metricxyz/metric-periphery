@@ -159,6 +159,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     nonReentrant
     returns (uint256 amountOut, bool usedFallback)
   {
+    _checkDeadline(params.primary.deadline);
     _validatePath(params.primary.tokens, params.primary.pools, params.primary.extensionDatas);
     if (FALLBACK_ROUTER == address(0)) revert FallbackRouterNotSet();
     if (params.fallbackCallData.length == 0) revert EmptyFallbackCallData();
@@ -285,7 +286,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
       payer: payer,
       amountIn: params.primary.amountIn,
       amountOutMinimum: params.primary.amountOutMinimum,
-      deadline: params.fallbackDeadline
+      deadline: params.primary.deadline
     });
   }
 
@@ -304,7 +305,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
       payer: payer,
       amountIn: params.primary.amountInMaximum,
       amountOutMinimum: params.primary.amountOut,
-      deadline: params.fallbackDeadline
+      deadline: params.primary.deadline
     });
   }
 
@@ -414,6 +415,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     nonReentrant
     returns (uint256 amountIn, bool usedFallback)
   {
+    _checkDeadline(params.primary.deadline);
     _validatePath(params.primary.tokens, params.primary.pools, params.primary.extensionDatas);
     if (FALLBACK_ROUTER == address(0)) revert FallbackRouterNotSet();
     if (params.fallbackCallData.length == 0) revert EmptyFallbackCallData();

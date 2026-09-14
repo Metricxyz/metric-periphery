@@ -148,17 +148,15 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///      output to this router, which forwards it to `primary.recipient`. It is not decoded or validated: the
   ///      approval is capped at `primary.amountIn` and the measured output delta is checked against
   ///      `primary.amountOutMinimum`, which bounds the leg whatever the calldata says.
-  /// @param primary MetricOmm route preferred when it is executable.
+  /// @param primary MetricOmm route preferred when it is executable. Its deadline applies to both routes
+  ///        and is checked before either attempt.
   /// @param fallbackCallData Pre-encoded call for the external fallback router, run only when `primary` reverts.
-  /// @param fallbackDeadline Timestamp after which the fallback leg reverts; independent of `primary.deadline`,
-  ///        both deadlines must remain valid for normal execution.
   /// @param gasReserve Gas retained for fallback execution and wrapper settlement.
   /// @param primaryGasLimit Fixed, nonzero gas forwarded to the primary attempt. Estimate against updated state.
   ///        The outer call must cover this budget, the reserve, EIP-150 retention and wrapper overhead.
   struct ExactInputWithFallbackParams {
     ExactInputParams primary;
     bytes fallbackCallData;
-    uint256 fallbackDeadline;
     uint256 gasReserve;
     uint256 primaryGasLimit;
   }
@@ -173,7 +171,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///        Exact-input legs set this to the exact spend; exact-output legs set it to the maximum spend, and any
   ///        part the leg does not consume is refunded to `payer`.
   /// @param amountOutMinimum Minimum measured output. Exact-output legs set this to the exact output required.
-  /// @param deadline Timestamp after which the fallback leg reverts.
+  /// @param deadline Original primary deadline, also enforced by the fallback leg.
   struct FallbackSwapTerms {
     address tokenIn;
     address tokenOut;
@@ -242,17 +240,15 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///      validated: the approval is capped at `primary.amountInMaximum` and the measured output delta is checked
   ///      against `primary.amountOut`, which bounds the leg whatever the calldata says. Input the leg leaves
   ///      unspent is refunded to the payer.
-  /// @param primary MetricOmm route preferred when it is executable.
+  /// @param primary MetricOmm route preferred when it is executable. Its deadline applies to both routes
+  ///        and is checked before either attempt.
   /// @param fallbackCallData Pre-encoded call for the external fallback router, run only when `primary` reverts.
-  /// @param fallbackDeadline Timestamp after which the fallback leg reverts; independent of `primary.deadline`,
-  ///        both deadlines must remain valid for normal execution.
   /// @param gasReserve Gas retained for fallback execution and wrapper settlement.
   /// @param primaryGasLimit Fixed, nonzero gas forwarded to the primary attempt. Estimate against updated state.
   ///        The outer call must cover this budget, the reserve, EIP-150 retention and wrapper overhead.
   struct ExactOutputWithFallbackParams {
     ExactOutputParams primary;
     bytes fallbackCallData;
-    uint256 fallbackDeadline;
     uint256 gasReserve;
     uint256 primaryGasLimit;
   }

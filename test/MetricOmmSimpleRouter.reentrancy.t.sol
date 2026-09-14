@@ -110,8 +110,8 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
   }
 
   function _fallbackParams() internal view returns (IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory p) {
-    p.primary = _primary(block.timestamp - 1);
-    p.fallbackDeadline = _deadline();
+    p.primary = _primary(_deadline());
+    p.primary.pools[0] = address(0xBAD); // Unavailable primary triggers fallback without expiring the swap.
     p.primaryGasLimit = 500_000;
     p.gasReserve = 1_000_000;
     p.fallbackCallData = abi.encodeCall(attacker.settle, (address(weth), address(token1), 2_000, 1_000));
