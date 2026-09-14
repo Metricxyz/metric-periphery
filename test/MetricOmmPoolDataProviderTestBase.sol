@@ -224,7 +224,7 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     );
 
     helper = new MetricOmmPoolDataProvider(address(factoryStub));
-    router = new MetricOmmSimpleRouter(address(new MockWETH9()), address(factoryStub));
+    router = new MetricOmmSimpleRouter(address(new MockWETH9()), address(factoryStub), address(0));
     seeder = new LiquiditySeederForSwapData();
 
     uint256 sharesPerBin = sharesPerBinOverride == 0 ? SHARES_PER_BIN : sharesPerBinOverride;

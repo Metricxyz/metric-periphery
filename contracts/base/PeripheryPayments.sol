@@ -34,7 +34,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function unwrapWETH9(uint256 amountMinimum, address recipient) public payable override {
+  function unwrapWETH9(uint256 amountMinimum, address recipient) public payable virtual override {
     uint256 balanceWETH = IERC20(WETH).balanceOf(address(this));
     if (balanceWETH < amountMinimum) revert InsufficientWETH(amountMinimum, balanceWETH);
 
@@ -45,7 +45,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function sweepToken(address token, uint256 amountMinimum, address recipient) public payable override {
+  function sweepToken(address token, uint256 amountMinimum, address recipient) public payable virtual override {
     uint256 balanceToken = IERC20(token).balanceOf(address(this));
     if (balanceToken < amountMinimum) revert InsufficientToken(token, amountMinimum, balanceToken);
 
@@ -55,7 +55,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function refundETH() external payable override {
+  function refundETH() public payable virtual override {
     uint256 balance = address(this).balance;
     if (balance > 0) {
       _transferETH(msg.sender, balance);

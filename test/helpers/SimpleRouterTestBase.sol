@@ -13,6 +13,7 @@ import {PoolFeeConfig} from "@metric-core/types/FactoryStorage.sol";
 import {MockERC20} from "@metric-core-test/mocks/MockERC20.sol";
 import {PoolInitPreprocessor} from "../../lib/metric-core/test/PoolInitPreprocessor.sol";
 import {MetricOmmSimpleRouter} from "../../contracts/MetricOmmSimpleRouter.sol";
+import {MockAggregationRouter} from "../mocks/MockAggregationRouter.sol";
 import {MetricOmmSwapQuoter} from "../../contracts/lens/MetricOmmSwapQuoter.sol";
 import {MockWETH9} from "../mocks/MockWETH9.sol";
 import {RouterTestFactory} from "../RouterTestFactory.sol";
@@ -90,6 +91,7 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
 
   MetricOmmPool internal pool;
   MetricOmmPool internal pool12;
+  MockAggregationRouter internal aggregator;
 
   address internal lp;
   address internal swapper;
@@ -116,7 +118,8 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
     oracle.setTokens(address(weth), address(token1));
     oracle.setBidAndAskPrice(TEST_BID_X64, TEST_ASK_X64);
 
-    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub));
+    aggregator = new MockAggregationRouter();
+    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(aggregator));
     quoter = new MetricOmmSwapQuoter();
     lpContract = new LiquidityHelper();
 
@@ -125,6 +128,13 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
 
     _seedLiquidityPool(pool, address(weth), address(token1), 0);
     _seedLiquidityPool(pool12, address(token1), address(token2), 1);
+
+    // Fund the fallback aggregator so it can pay out whatever a fallback leg asks it for.
+    token1.mint(address(aggregator), 1_000_000e18);
+    token2.mint(address(aggregator), 1_000_000e18);
+    vm.deal(address(aggregator), 100 ether);
+    vm.prank(address(aggregator));
+    weth.deposit{value: 50 ether}();
 
     vm.deal(swapper, 100 ether);
     token1.mint(swapper, 1_000_000e18);

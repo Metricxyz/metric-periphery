@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/0xProject/0x-settler",
+  "commit": "e80cfb0234cc7153abb34e63ad80e9ea2cf27dff",
+  "usage": "Test-only AllowanceHolder dependencies. Never imported by production contracts.",
+  "changes": [
+    "Replaced @forge-std/ import prefix with local forge-std/ prefix.",
+    "Formatted Solidity using this repository forge fmt configuration."
+  ],
+  "harness": "../../mocks/PinnedAllowanceHolder.sol relaxes compiler pragma and omits canonical-address constructor check. Settlement target is a test double, not 0x Settler."
+}

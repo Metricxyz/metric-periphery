@@ -65,6 +65,27 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   /// @notice Swap amount exceeds the maximum representable as a signed pool delta.
   /// @param amount Amount that does not fit in int128.
   error AmountTooLarge(uint128 amount);
+  /// @notice Neither the primary nor the fallback route completed.
+  /// @param primaryReason Revert data returned by the primary route, truncated to at most 4096 bytes.
+  /// @param fallbackReason Fallback error; external target revert data is truncated to at most 4096 bytes.
+  error BothRoutesFailed(bytes primaryReason, bytes fallbackReason);
+  /// @notice Attempt entrypoint was reached by a caller other than the router itself.
+  error OnlySelf();
+  /// @notice Fallback route was requested but this router was deployed without an external fallback router.
+  error FallbackRouterNotSet();
+  /// @notice Fallback route carried empty calldata.
+  error EmptyFallbackCallData();
+  /// @notice External fallback router reverted without returning any reason data.
+  error FallbackCallFailed();
+  /// @notice Fallback accounting requires distinct input and output tokens.
+  error SameTokenFallback();
+  /// @notice A nonzero primary attempt budget is required.
+  error InvalidPrimaryGasLimit();
+
+  /// @notice Gas remaining cannot cover the primary budget, fallback reserve, and call overhead.
+  /// @param gasReserve Gas the caller asked to hold back for the fallback route.
+  /// @param gasAvailable Gas remaining when the reserve was checked.
+  error InsufficientGasReserve(uint256 gasReserve, uint256 gasAvailable);
 
   // ============ Types ============
 
@@ -112,6 +133,54 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
     uint128 amountIn;
     uint128 amountOutMinimum;
     address recipient;
+    uint256 deadline;
+  }
+
+  /// @notice Exact-input swap through MetricOmm pools, falling back to an external aggregator router.
+  /// @dev For routes that are not executable against the state a simulation sees, because the state they depend
+  ///      on lands earlier in the same block. `primary` is attempted first and the external leg runs only if it
+  ///      reverts, so exactly one leg settles. A reverted attempt rolls back its own transfers, approvals, and
+  ///      transient callback context, so the fallback starts from entry state.
+  ///      Token pair, input amount, minimum output, and recipient are all taken from `primary`, so both legs are
+  ///      bound by one slippage figure by construction. The original `primary.amountOutMinimum`
+  ///      is never lowered for the fallback. Do not attach a fallback quote that cannot meet it.
+  ///      `fallbackCallData` must be encoded to spend `primary.amountIn` of `primary.tokens[0]` and to deliver the
+  ///      output to this router, which forwards it to `primary.recipient`. It is not decoded or validated: the
+  ///      approval is capped at `primary.amountIn` and the measured output delta is checked against
+  ///      `primary.amountOutMinimum`, which bounds the leg whatever the calldata says.
+  /// @param primary MetricOmm route preferred when it is executable.
+  /// @param fallbackCallData Pre-encoded call for the external fallback router, run only when `primary` reverts.
+  /// @param fallbackDeadline Timestamp after which the fallback leg reverts; independent of `primary.deadline`,
+  ///        both deadlines must remain valid for normal execution.
+  /// @param gasReserve Gas retained for fallback execution and wrapper settlement.
+  /// @param primaryGasLimit Fixed, nonzero gas forwarded to the primary attempt. Estimate against updated state.
+  ///        The outer call must cover this budget, the reserve, EIP-150 retention and wrapper overhead.
+  struct ExactInputWithFallbackParams {
+    ExactInputParams primary;
+    bytes fallbackCallData;
+    uint256 fallbackDeadline;
+    uint256 gasReserve;
+    uint256 primaryGasLimit;
+  }
+
+  /// @notice Terms the external fallback leg must satisfy, derived wholly from the primary route.
+  /// @dev The fallback rejects identical input and output tokens before funding or approval.
+  /// @param tokenIn Input token pulled from `payer` and approved to the fallback router.
+  /// @param tokenOut Output token whose balance delta on this router is measured and forwarded.
+  /// @param recipient Address that receives the measured output.
+  /// @param payer Address the input is pulled from, and the leftover input is refunded to.
+  /// @param amountIn Input pulled from `payer`, and the cap on the approval granted to the fallback router.
+  ///        Exact-input legs set this to the exact spend; exact-output legs set it to the maximum spend, and any
+  ///        part the leg does not consume is refunded to `payer`.
+  /// @param amountOutMinimum Minimum measured output. Exact-output legs set this to the exact output required.
+  /// @param deadline Timestamp after which the fallback leg reverts.
+  struct FallbackSwapTerms {
+    address tokenIn;
+    address tokenOut;
+    address recipient;
+    address payer;
+    uint128 amountIn;
+    uint128 amountOutMinimum;
     uint256 deadline;
   }
 
@@ -163,15 +232,58 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
     uint256 deadline;
   }
 
+  /// @notice Exact-output swap through MetricOmm pools, falling back to an external aggregator router.
+  /// @dev The exact-output counterpart of `ExactInputWithFallbackParams`; the same one-leg-settles rule applies.
+  ///      Token pair, recipient, exact output, and maximum input are all taken from `primary`, so both legs are
+  ///      bound by one set of limits by construction. the original `primary.amountInMaximum` is never raised for
+  ///      the fallback. Do not attach a quote that requires more input.
+  ///      `fallbackCallData` must be encoded to deliver exactly `primary.amountOut` of the final path token to this
+  ///      router, spending no more than `primary.amountInMaximum` of `primary.tokens[0]`. It is not decoded or
+  ///      validated: the approval is capped at `primary.amountInMaximum` and the measured output delta is checked
+  ///      against `primary.amountOut`, which bounds the leg whatever the calldata says. Input the leg leaves
+  ///      unspent is refunded to the payer.
+  /// @param primary MetricOmm route preferred when it is executable.
+  /// @param fallbackCallData Pre-encoded call for the external fallback router, run only when `primary` reverts.
+  /// @param fallbackDeadline Timestamp after which the fallback leg reverts; independent of `primary.deadline`,
+  ///        both deadlines must remain valid for normal execution.
+  /// @param gasReserve Gas retained for fallback execution and wrapper settlement.
+  /// @param primaryGasLimit Fixed, nonzero gas forwarded to the primary attempt. Estimate against updated state.
+  ///        The outer call must cover this budget, the reserve, EIP-150 retention and wrapper overhead.
+  struct ExactOutputWithFallbackParams {
+    ExactOutputParams primary;
+    bytes fallbackCallData;
+    uint256 fallbackDeadline;
+    uint256 gasReserve;
+    uint256 primaryGasLimit;
+  }
+
   // ============ Mutating: exact input ============
 
   function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
 
   function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 
+  function exactInputWithFallback(ExactInputWithFallbackParams calldata params)
+    external
+    payable
+    returns (uint256 amountOut, bool usedFallback);
+
+  function exactInputAttempt(ExactInputParams calldata params, address payer) external returns (uint256 amountOut);
+
+  function fallbackSwapAttempt(FallbackSwapTerms calldata terms, bytes calldata callData)
+    external
+    returns (uint256 amountOut, uint256 amountSpent);
+
   // ============ Mutating: exact output ============
 
   function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn);
 
   function exactOutput(ExactOutputParams calldata params) external payable returns (uint256 amountIn);
+
+  function exactOutputWithFallback(ExactOutputWithFallbackParams calldata params)
+    external
+    payable
+    returns (uint256 amountIn, bool usedFallback);
+
+  function exactOutputAttempt(ExactOutputParams calldata params, address payer) external returns (uint256 amountIn);
 }
