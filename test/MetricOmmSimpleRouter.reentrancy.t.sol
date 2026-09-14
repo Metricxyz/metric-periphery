@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
-import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {IPeripheryPayments} from "../contracts/interfaces/IPeripheryPayments.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -14,11 +13,6 @@ contract RouterReentryTarget {
   uint256 public blocked;
 
   constructor(address router_) {
-    router = router_;
-  }
-
-  function initializeRouter(address router_) external {
-    require(router == address(0));
     router = router_;
   }
 
@@ -87,12 +81,8 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
 
   function setUp() public override {
     super.setUp();
-    attacker = new RouterReentryTarget(address(0));
-    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(attacker));
-    attacker.initializeRouter(address(router));
+    attacker = new RouterReentryTarget(address(router));
     token1.mint(address(attacker), 1_000_000);
-    vm.prank(swapper);
-    weth.approve(address(router), type(uint256).max);
   }
 
   function _primary(uint256 deadline) internal view returns (IMetricOmmSimpleRouter.ExactInputParams memory p) {
@@ -112,6 +102,7 @@ contract MetricOmmSimpleRouterReentrancyTest is SimpleRouterTestBase {
   function _fallbackParams() internal view returns (IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory p) {
     p.primary = _primary(_deadline());
     p.primary.pools[0] = address(0xBAD); // Unavailable primary triggers fallback without expiring the swap.
+    p.fallbackRouter = address(attacker);
     p.primaryGasLimit = 500_000;
     p.gasReserve = 1_000_000;
     p.fallbackCallData = abi.encodeCall(attacker.settle, (address(weth), address(token1), 2_000, 1_000));

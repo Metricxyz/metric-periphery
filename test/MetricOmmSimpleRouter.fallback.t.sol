@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 // forge-lint: disable-start(unsafe-typecast)
 
-import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {IMetricOmmSimpleRouter} from "../contracts/interfaces/IMetricOmmSimpleRouter.sol";
 import {MockAggregationRouter} from "./mocks/MockAggregationRouter.sol";
 import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
@@ -56,7 +55,11 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     returns (IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory)
   {
     return IMetricOmmSimpleRouter.ExactInputWithFallbackParams({
-      primary: primary, fallbackCallData: callData, gasReserve: GAS_RESERVE, primaryGasLimit: 500_000
+      primary: primary,
+      fallbackRouter: address(aggregator),
+      fallbackCallData: callData,
+      gasReserve: GAS_RESERVE,
+      primaryGasLimit: 500_000
     });
   }
 
@@ -160,14 +163,55 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     router.exactInputWithFallback(_params(_primary(address(pool), 0, _deadline()), ""));
   }
 
-  function test_exactInputWithFallback_revertsFallbackRouterNotSet() public {
-    MetricOmmSimpleRouter unset = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(0));
+  function test_fallbackRejectsSelfAndTargetsWithoutCode() public {
+    address[3] memory targets = [address(0), address(0xBEEF), address(router)];
+    for (uint256 i; i < targets.length; ++i) {
+      IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory input =
+        _params(_primary(UNAVAILABLE_POOL, FALLBACK_OUT, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
+      input.fallbackRouter = targets[i];
+      vm.prank(swapper);
+      vm.expectRevert(abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidFallbackRouter.selector, targets[i]));
+      router.exactInputWithFallback(input);
 
+      IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory output =
+        _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _deadline()), _fallbackCallData(MAX_IN, EXACT_OUT));
+      output.fallbackRouter = targets[i];
+      vm.prank(swapper);
+      vm.expectRevert(abi.encodeWithSelector(IMetricOmmSimpleRouter.InvalidFallbackRouter.selector, targets[i]));
+      router.exactOutputWithFallback(output);
+      assertEq(weth.allowance(address(router), targets[i]), 0);
+    }
+    _assertRouterEmpty();
+  }
+
+  function test_multicallUsesEachSwapsSelectedFallbackTarget() public {
+    MockAggregationRouter second = new MockAggregationRouter();
+    token1.mint(address(second), EXACT_OUT);
+    IMetricOmmSimpleRouter.ExactInputWithFallbackParams memory input =
+      _params(_primary(UNAVAILABLE_POOL, FALLBACK_OUT, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT));
+    IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory output =
+      _paramsOut(_primaryOut(UNAVAILABLE_POOL, MAX_IN, _deadline()), _fallbackCallData(MAX_IN - 1, EXACT_OUT));
+    output.fallbackRouter = address(second);
+    bytes[] memory calls = new bytes[](2);
+    calls[0] = abi.encodeCall(router.exactInputWithFallback, (input));
+    calls[1] = abi.encodeCall(router.exactOutputWithFallback, (output));
+    uint256 firstBefore = weth.balanceOf(address(aggregator));
+    uint256 payerBefore = weth.balanceOf(swapper);
+    uint256 recipientBefore = token1.balanceOf(recipient);
     vm.prank(swapper);
-    vm.expectRevert(IMetricOmmSimpleRouter.FallbackRouterNotSet.selector);
-    unset.exactInputWithFallback(
-      _params(_primary(address(pool), 0, _deadline()), _fallbackCallData(AMOUNT_IN, FALLBACK_OUT))
-    );
+    bytes[] memory results = router.multicall(calls);
+    (uint256 amountOut, bool inputFallback) = abi.decode(results[0], (uint256, bool));
+    (uint256 amountIn, bool outputFallback) = abi.decode(results[1], (uint256, bool));
+    assertTrue(inputFallback && outputFallback);
+    assertEq(amountOut, FALLBACK_OUT);
+    assertEq(amountIn, MAX_IN - 1);
+    assertEq(weth.balanceOf(address(aggregator)) - firstBefore, AMOUNT_IN);
+    assertEq(weth.balanceOf(address(second)), MAX_IN - 1);
+    assertEq(payerBefore - weth.balanceOf(swapper), AMOUNT_IN + MAX_IN - 1);
+    assertEq(token1.balanceOf(recipient) - recipientBefore, FALLBACK_OUT + EXACT_OUT);
+    assertEq(weth.allowance(address(router), address(aggregator)), 0);
+    assertEq(weth.allowance(address(router), address(second)), 0);
+    _assertRouterEmpty();
   }
 
   function test_exactInputWithFallback_revertsInsufficientGasReserve() public {
@@ -242,6 +286,7 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
 
   function test_fallbackSwapAttempt_revertsOnlySelf() public {
     IMetricOmmSimpleRouter.FallbackSwapTerms memory terms = IMetricOmmSimpleRouter.FallbackSwapTerms({
+      fallbackRouter: address(aggregator),
       tokenIn: address(weth),
       tokenOut: address(token1),
       recipient: recipient,
@@ -509,7 +554,11 @@ contract MetricOmmSimpleRouterFallbackTest is SimpleRouterTestBase {
     returns (IMetricOmmSimpleRouter.ExactOutputWithFallbackParams memory)
   {
     return IMetricOmmSimpleRouter.ExactOutputWithFallbackParams({
-      primary: primary, fallbackCallData: callData, gasReserve: GAS_RESERVE, primaryGasLimit: 500_000
+      primary: primary,
+      fallbackRouter: address(aggregator),
+      fallbackCallData: callData,
+      gasReserve: GAS_RESERVE,
+      primaryGasLimit: 500_000
     });
   }
 

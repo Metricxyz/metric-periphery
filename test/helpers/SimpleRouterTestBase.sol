@@ -119,7 +119,7 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
     oracle.setBidAndAskPrice(TEST_BID_X64, TEST_ASK_X64);
 
     aggregator = new MockAggregationRouter();
-    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(aggregator));
+    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub));
     quoter = new MetricOmmSwapQuoter();
     lpContract = new LiquidityHelper();
 

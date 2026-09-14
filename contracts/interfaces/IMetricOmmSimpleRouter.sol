@@ -71,8 +71,8 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   error BothRoutesFailed(bytes primaryReason, bytes fallbackReason);
   /// @notice Attempt entrypoint was reached by a caller other than the router itself.
   error OnlySelf();
-  /// @notice Fallback route was requested but this router was deployed without an external fallback router.
-  error FallbackRouterNotSet();
+  /// @notice The fallback target is this router or has no deployed code.
+  error InvalidFallbackRouter(address target);
   /// @notice Fallback route carried empty calldata.
   error EmptyFallbackCallData();
   /// @notice External fallback router reverted without returning any reason data.
@@ -150,19 +150,23 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///      `primary.amountOutMinimum`, which bounds the leg whatever the calldata says.
   /// @param primary MetricOmm route preferred when it is executable. Its deadline applies to both routes
   ///        and is checked before either attempt.
+  /// @param fallbackRouter Caller-selected contract that both receives the call and spends the approved input.
+  ///        Must have deployed code and differ from this router. Separate approval and execution targets require an adapter.
   /// @param fallbackCallData Pre-encoded call for the external fallback router, run only when `primary` reverts.
   /// @param gasReserve Gas retained for fallback execution and wrapper settlement.
   /// @param primaryGasLimit Fixed, nonzero gas forwarded to the primary attempt. Estimate against updated state.
   ///        The outer call must cover this budget, the reserve, EIP-150 retention and wrapper overhead.
   struct ExactInputWithFallbackParams {
     ExactInputParams primary;
+    address fallbackRouter;
     bytes fallbackCallData;
     uint256 gasReserve;
     uint256 primaryGasLimit;
   }
 
-  /// @notice Terms the external fallback leg must satisfy, derived wholly from the primary route.
+  /// @notice Terms for the external fallback leg; all amount limits and the deadline come from the primary route.
   /// @dev The fallback rejects identical input and output tokens before funding or approval.
+  /// @param fallbackRouter Caller-selected approval and execution target.
   /// @param tokenIn Input token pulled from `payer` and approved to the fallback router.
   /// @param tokenOut Output token whose balance delta on this router is measured and forwarded.
   /// @param recipient Address that receives the measured output.
@@ -173,6 +177,7 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   /// @param amountOutMinimum Minimum measured output. Exact-output legs set this to the exact output required.
   /// @param deadline Original primary deadline, also enforced by the fallback leg.
   struct FallbackSwapTerms {
+    address fallbackRouter;
     address tokenIn;
     address tokenOut;
     address recipient;
@@ -242,12 +247,15 @@ interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMultic
   ///      unspent is refunded to the payer.
   /// @param primary MetricOmm route preferred when it is executable. Its deadline applies to both routes
   ///        and is checked before either attempt.
+  /// @param fallbackRouter Caller-selected contract that both receives the call and spends the approved input.
+  ///        Must have deployed code and differ from this router. Separate approval and execution targets require an adapter.
   /// @param fallbackCallData Pre-encoded call for the external fallback router, run only when `primary` reverts.
   /// @param gasReserve Gas retained for fallback execution and wrapper settlement.
   /// @param primaryGasLimit Fixed, nonzero gas forwarded to the primary attempt. Estimate against updated state.
   ///        The outer call must cover this budget, the reserve, EIP-150 retention and wrapper overhead.
   struct ExactOutputWithFallbackParams {
     ExactOutputParams primary;
+    address fallbackRouter;
     bytes fallbackCallData;
     uint256 gasReserve;
     uint256 primaryGasLimit;

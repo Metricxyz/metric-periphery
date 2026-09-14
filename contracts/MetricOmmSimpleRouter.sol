@@ -28,19 +28,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   /// @param callbackMode Unrecognized mode read from transient storage.
   error InvalidCallbackMode(uint8 callbackMode);
 
-  /// @notice Immutable external aggregator used by the fallback swap entrypoints.
-  ///         `address(0)` disables fallback execution. The target may forward to other contracts,
-  ///         so fixing this address does not restrict every downstream call.
-  /// @dev The aggregator must both receive the call and spend the input approved to this address.
-  ///      Aggregators with separate approval and execution targets require a different adapter.
-  address internal immutable FALLBACK_ROUTER;
-
-  constructor(address weth, address factory, address fallbackRouter)
-    MetricOmmSwapRouterBase(factory)
-    PeripheryPayments(weth)
-  {
-    FALLBACK_ROUTER = fallbackRouter;
-  }
+  constructor(address weth, address factory) MetricOmmSwapRouterBase(factory) PeripheryPayments(weth) {}
 
   // ============ Types ============
 
@@ -148,7 +136,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   }
 
   /// @inheritdoc IMetricOmmSimpleRouter
-  /// @dev Attempts `primary`, and calls `FALLBACK_ROUTER` only if it reverts. Both legs execute as self-calls so a
+  /// @dev Attempts `primary`, and calls `params.fallbackRouter` only if it reverts. Both legs execute as self-calls so a
   ///      failing leg unwinds its own transfers, approvals, and transient callback context (EIP-1153 reverts
   ///      `TSTORE` alongside storage) without taking the transaction with it. `payer` stays the outer `msg.sender`
   ///      for both legs, so funds are pulled from the original caller either way, native ETH included: value sits
@@ -161,7 +149,9 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   {
     _checkDeadline(params.primary.deadline);
     _validatePath(params.primary.tokens, params.primary.pools, params.primary.extensionDatas);
-    if (FALLBACK_ROUTER == address(0)) revert FallbackRouterNotSet();
+    if (params.fallbackRouter == address(this) || params.fallbackRouter.code.length == 0) {
+      revert InvalidFallbackRouter(params.fallbackRouter);
+    }
     if (params.fallbackCallData.length == 0) revert EmptyFallbackCallData();
 
     // Encode before measuring gas: path size must not eat into the attempt's budget.
@@ -190,8 +180,8 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   }
 
   /// @inheritdoc IMetricOmmSimpleRouter
-  /// @dev Self-call only, for the same revert-isolation reason as `exactInputAttempt`. `terms` is derived from the
-  ///      primary route by `_fallbackTerms` and is never attacker-controlled because only this contract may reach it.
+  /// @dev Self-call only, for the same revert-isolation reason as `exactInputAttempt`. Terms are constructed from
+  ///      the public swap parameters, with the original caller as payer and all limits from the primary route.
   function fallbackSwapAttempt(FallbackSwapTerms calldata terms, bytes calldata callData)
     external
     returns (uint256 amountOut, uint256 amountSpent)
@@ -259,11 +249,11 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     uint256 tokenOutBefore = tokenOut.balanceOf(address(this));
 
     pay(terms.tokenIn, terms.payer, address(this), terms.amountIn);
-    tokenIn.forceApprove(FALLBACK_ROUTER, terms.amountIn);
+    tokenIn.forceApprove(terms.fallbackRouter, terms.amountIn);
 
-    _callFallback(callData);
+    _callFallback(terms.fallbackRouter, callData);
 
-    tokenIn.forceApprove(FALLBACK_ROUTER, 0);
+    tokenIn.forceApprove(terms.fallbackRouter, 0);
 
     amountOut = tokenOut.balanceOf(address(this)) - tokenOutBefore;
     if (amountOut < terms.amountOutMinimum) revert InsufficientOutput(amountOut, terms.amountOutMinimum);
@@ -280,6 +270,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     returns (FallbackSwapTerms memory terms)
   {
     terms = FallbackSwapTerms({
+      fallbackRouter: params.fallbackRouter,
       tokenIn: params.primary.tokens[0],
       tokenOut: params.primary.tokens[params.primary.tokens.length - 1],
       recipient: params.primary.recipient,
@@ -299,6 +290,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     returns (FallbackSwapTerms memory terms)
   {
     terms = FallbackSwapTerms({
+      fallbackRouter: params.fallbackRouter,
       tokenIn: params.primary.tokens[0],
       tokenOut: params.primary.tokens[params.primary.tokens.length - 1],
       recipient: params.primary.recipient,
@@ -341,8 +333,7 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
 
   /// @dev Successful return data is unused. Only copy a bounded failure diagnostic so the
   ///      external target cannot force an unbounded allocation in this call frame.
-  function _callFallback(bytes memory data) private {
-    address target = FALLBACK_ROUTER;
+  function _callFallback(address target, bytes memory data) private {
     bool success;
     bytes memory reason;
     assembly ("memory-safe") {
@@ -417,7 +408,9 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
   {
     _checkDeadline(params.primary.deadline);
     _validatePath(params.primary.tokens, params.primary.pools, params.primary.extensionDatas);
-    if (FALLBACK_ROUTER == address(0)) revert FallbackRouterNotSet();
+    if (params.fallbackRouter == address(this) || params.fallbackRouter.code.length == 0) {
+      revert InvalidFallbackRouter(params.fallbackRouter);
+    }
     if (params.fallbackCallData.length == 0) revert EmptyFallbackCallData();
 
     // Encode before measuring gas: path size must not eat into the attempt's budget.
