@@ -9,7 +9,6 @@ import {MetricOmmSwapRouterBase} from "./base/MetricOmmSwapRouterBase.sol";
 import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
 import {IMetricOmmSimpleRouter} from "./interfaces/IMetricOmmSimpleRouter.sol";
-import {IPeripheryPayments} from "./interfaces/IPeripheryPayments.sol";
 import {IMulticall} from "./interfaces/IMulticall.sol";
 import {MetricOmmSwapPath} from "./libraries/MetricOmmSwapPath.sol";
 import {MetricOmmSwapInputs} from "./libraries/MetricOmmSwapInputs.sol";
@@ -18,7 +17,7 @@ import {MetricOmmSwapResults} from "./libraries/MetricOmmSwapResults.sol";
 /// @title MetricOmmSimpleRouter
 /// @notice Exact-input and exact-output swaps through one or more MetricOmm pools.
 /// @dev Expected callback pool, payer, token, and swap mode are stored in transient storage at entry.
-///      Swaps, payments, and permit calls share a transient execution lock inherited through SelfPermit.
+///      Swaps, payments, and permit calls share a transient execution lock inherited through PeripheryPayments and SelfPermit.
 ///      Primary and fallback attempts run inside the outer swap lock, including across caught reverts.
 
 contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, SelfPermit, IMetricOmmSimpleRouter {
@@ -51,31 +50,6 @@ contract MetricOmmSimpleRouter is MetricOmmSwapRouterBase, PeripheryPayments, Se
     for (uint256 i = 0; i < data.length; i++) {
       results[i] = Address.functionDelegateCall(address(this), data[i]);
     }
-  }
-
-  /// @inheritdoc IPeripheryPayments
-  function unwrapWETH9(uint256 amountMinimum, address recipient)
-    public
-    payable
-    override(PeripheryPayments, IPeripheryPayments)
-    nonReentrant
-  {
-    super.unwrapWETH9(amountMinimum, recipient);
-  }
-
-  /// @inheritdoc IPeripheryPayments
-  function sweepToken(address token, uint256 amountMinimum, address recipient)
-    public
-    payable
-    override(PeripheryPayments, IPeripheryPayments)
-    nonReentrant
-  {
-    super.sweepToken(token, amountMinimum, recipient);
-  }
-
-  /// @inheritdoc IPeripheryPayments
-  function refundETH() public payable override(PeripheryPayments, IPeripheryPayments) nonReentrant {
-    super.refundETH();
   }
 
   // Callbacks and OnlySelf attempt entrypoints deliberately do not acquire the lock again.

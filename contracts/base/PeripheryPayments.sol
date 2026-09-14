@@ -3,12 +3,14 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IWETH9} from "../interfaces/IWETH9.sol";
 import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
 /// @title PeripheryPayments
 /// @notice Shared payment, unwrap, sweep, and refund helpers for MetricOmm routers.
-abstract contract PeripheryPayments is IPeripheryPayments {
+/// @dev Public payment helpers share the execution lock with other guarded entrypoints in inheriting contracts.
+abstract contract PeripheryPayments is IPeripheryPayments, ReentrancyGuardTransient {
   using SafeERC20 for IERC20;
 
   /// @notice Constructor received zero WETH address.
@@ -34,7 +36,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function unwrapWETH9(uint256 amountMinimum, address recipient) public payable virtual override {
+  function unwrapWETH9(uint256 amountMinimum, address recipient) public payable override nonReentrant {
     uint256 balanceWETH = IERC20(WETH).balanceOf(address(this));
     if (balanceWETH < amountMinimum) revert InsufficientWETH(amountMinimum, balanceWETH);
 
@@ -45,7 +47,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function sweepToken(address token, uint256 amountMinimum, address recipient) public payable virtual override {
+  function sweepToken(address token, uint256 amountMinimum, address recipient) public payable override nonReentrant {
     uint256 balanceToken = IERC20(token).balanceOf(address(this));
     if (balanceToken < amountMinimum) revert InsufficientToken(token, amountMinimum, balanceToken);
 
@@ -55,7 +57,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function refundETH() public payable virtual override {
+  function refundETH() public payable override nonReentrant {
     uint256 balance = address(this).balance;
     if (balance > 0) {
       _transferETH(msg.sender, balance);
