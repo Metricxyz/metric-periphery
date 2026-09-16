@@ -9,7 +9,6 @@ import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
 /// @title PeripheryPayments
 /// @notice Shared payment, unwrap, sweep, and refund helpers for MetricOmm routers.
-/// @dev Public payment helpers share the execution lock with other guarded entrypoints in inheriting contracts.
 abstract contract PeripheryPayments is IPeripheryPayments, ReentrancyGuardTransient {
   using SafeERC20 for IERC20;
 

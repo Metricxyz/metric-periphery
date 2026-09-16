@@ -30,7 +30,11 @@ contract MetricOmmSimpleRouter is
   /// @param callbackMode Unrecognized mode read from transient storage.
   error InvalidCallbackMode(uint8 callbackMode);
 
-  constructor(address weth, address factory) MetricOmmSwapRouterBase(factory) PeripheryPayments(weth) {}
+  constructor(address weth, address factory, address executor)
+    MetricOmmSwapRouterBase(factory)
+    PeripheryPayments(weth)
+    ExternalSwap(executor)
+  {}
 
   // ============ Types ============
 
@@ -45,10 +49,7 @@ contract MetricOmmSimpleRouter is
   // ============ External: callback ============
 
   /// @inheritdoc IMulticall
-  /// @dev Each delegated operation acquires and releases the shared lock. Rejects nested top-level entry, but does
-  ///      not lock the dispatcher itself.
-  function multicall(bytes[] calldata data) public payable override returns (bytes[] memory results) {
-    if (_reentrancyGuardEntered()) revert ReentrancyGuardReentrantCall();
+  function multicall(bytes[] calldata data) public payable override whenNotEntered returns (bytes[] memory results) {
     results = new bytes[](data.length);
     for (uint256 i = 0; i < data.length; i++) {
       results[i] = Address.functionDelegateCall(address(this), data[i]);

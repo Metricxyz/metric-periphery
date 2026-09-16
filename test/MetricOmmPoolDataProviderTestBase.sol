@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 // forge-lint: disable-start(unsafe-typecast)
 
+import {ExternalSwapExecutor} from "../contracts/base/ExternalSwapExecutor.sol";
 import {Test} from "forge-std/Test.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -224,7 +225,10 @@ abstract contract MetricOmmPoolDataProviderTestBase is Test, PoolInitPreprocesso
     );
 
     helper = new MetricOmmPoolDataProvider(address(factoryStub));
-    router = new MetricOmmSimpleRouter(address(new MockWETH9()), address(factoryStub));
+    MockWETH9 routerWeth = new MockWETH9();
+    ExternalSwapExecutor executor =
+      new ExternalSwapExecutor(vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1));
+    router = new MetricOmmSimpleRouter(address(routerWeth), address(factoryStub), address(executor));
     seeder = new LiquiditySeederForSwapData();
 
     uint256 sharesPerBin = sharesPerBinOverride == 0 ? SHARES_PER_BIN : sharesPerBinOverride;

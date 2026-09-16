@@ -11,13 +11,15 @@ import {SimpleRouterTestBase} from "./helpers/SimpleRouterTestBase.sol";
 
 contract MetricOmmSimpleRouterPaymentsTest is SimpleRouterTestBase {
   function test_constructor_revertsOnZeroWeth() public {
+    address executor = address(router.isolatedExternalExecutor());
     vm.expectRevert(PeripheryPayments.InvalidWETH.selector);
-    new MetricOmmSimpleRouter(address(0), address(factoryStub));
+    new MetricOmmSimpleRouter(address(0), address(factoryStub), executor);
   }
 
   function test_constructor_revertsOnZeroFactory() public {
+    address executor = address(router.isolatedExternalExecutor());
     vm.expectRevert(IMetricOmmSimpleRouter.InvalidFactory.selector);
-    new MetricOmmSimpleRouter(address(weth), address(0));
+    new MetricOmmSimpleRouter(address(weth), address(0), executor);
   }
 
   function test_receive_acceptsWethWithdraw() public {

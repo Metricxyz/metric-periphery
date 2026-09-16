@@ -131,3 +131,7 @@ test/mocks/            # Test doubles (e.g. MockERC20, MockOracle, TestCaller)
 ## License
 
 UNLICENSED
+
+### Router deployment
+
+`MetricOmmSimpleRouter(weth, factory, executor)` requires a pre-deployed `ExternalSwapExecutor`. Predict the router address, deploy `ExternalSwapExecutor(predictedRouter)`, then deploy the router at that address with the executor address. CREATE3 allows predicting the router address independently of constructor arguments. The router verifies the executor binding; both references are immutable. Users approve only the router.

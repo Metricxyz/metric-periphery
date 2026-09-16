@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 // forge-lint: disable-start(unsafe-typecast)
 
+import {ExternalSwapExecutor} from "../../contracts/base/ExternalSwapExecutor.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {Test} from "forge-std/Test.sol";
@@ -116,7 +117,9 @@ abstract contract SimpleRouterTestBase is Test, PoolInitPreprocessor {
     oracle.setTokens(address(weth), address(token1));
     oracle.setBidAndAskPrice(TEST_BID_X64, TEST_ASK_X64);
 
-    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub));
+    ExternalSwapExecutor executor =
+      new ExternalSwapExecutor(vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1));
+    router = new MetricOmmSimpleRouter(address(weth), address(factoryStub), address(executor));
     quoter = new MetricOmmSwapQuoter();
     lpContract = new LiquidityHelper();
 

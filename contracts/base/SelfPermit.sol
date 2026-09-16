@@ -10,8 +10,7 @@ import {ISelfPermit} from "../interfaces/ISelfPermit.sol";
 /// @title SelfPermit
 /// @notice Functionality to call permit on any EIP-2612-compliant token for use in the route.
 /// @dev This follows the Uniswap v3-periphery pattern using OpenZeppelin's IERC20Permit.
-///      Intended to be composed with Multicall. The external permit call shares the router execution lock;
-///      conditional wrappers call the guarded leaf only when a permit is needed.
+///      Intended to be composed with Multicall.
 abstract contract SelfPermit is ISelfPermit, ReentrancyGuardTransient {
   /// @inheritdoc ISelfPermit
   function selfPermit(address token, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
