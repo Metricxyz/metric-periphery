@@ -5,6 +5,8 @@ import {IMetricOmmSwapCallback} from "@metric-core/interfaces/callbacks/IMetricO
 import {IMulticall} from "./IMulticall.sol";
 import {ISelfPermit} from "./ISelfPermit.sol";
 import {IPeripheryPayments} from "./IPeripheryPayments.sol";
+import {ISequence} from "./ISequence.sol";
+import {IExternalSwap} from "./IExternalSwap.sol";
 
 /// @title IMetricOmmSimpleRouter
 /// @notice ERC-20 exact-input and exact-output swaps through one or more MetricOmm pools.
@@ -17,7 +19,14 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 ///      Multihop exact-output executes `pools` from last to first; `amountOut` is `tokens[tokens.length - 1]`.
 ///      Multihop paths omit per-hop price limits; slippage is controlled solely by `amountOutMinimum` (exact input)
 ///      or `amountInMaximum` (exact output).
-interface IMetricOmmSimpleRouter is IMetricOmmSwapCallback, ISelfPermit, IMulticall, IPeripheryPayments {
+interface IMetricOmmSimpleRouter is
+  IMetricOmmSwapCallback,
+  ISelfPermit,
+  IMulticall,
+  ISequence,
+  IExternalSwap,
+  IPeripheryPayments
+{
   // ============ Errors ============
 
   /// @notice Swap deadline is in the past.
