@@ -63,6 +63,7 @@ abstract contract PeripheryPayments is IPeripheryPayments, ReentrancyGuardTransi
     }
   }
 
+  /// @notice Pays token to recipient from payer !HOWEVER! if token is WETH, tries to wrap and pay from this.balance first before transferring from payer.
   /// @param token The token to pay.
   /// @param payer The entity that must pay.
   /// @param recipient The entity that will receive payment.
@@ -71,21 +72,25 @@ abstract contract PeripheryPayments is IPeripheryPayments, ReentrancyGuardTransi
     // If the payer is contract it means we are in the middle of a path. In the middle of a path we operate on ERC20 only.
     if (payer == address(this)) {
       IERC20(token).safeTransfer(recipient, value);
-    } else if (token == WETH) {
+      return;
+    }
+    if (token == WETH) {
       uint256 nativeBalance = address(this).balance;
       if (nativeBalance >= value) {
         IWETH9(WETH).deposit{value: value}();
         IERC20(WETH).safeTransfer(recipient, value);
-      } else if (nativeBalance > 0) {
+        return;
+      }
+      if (nativeBalance > 0) {
         IWETH9(WETH).deposit{value: nativeBalance}();
         IERC20(WETH).safeTransfer(recipient, nativeBalance);
         IERC20(WETH).safeTransferFrom(payer, recipient, value - nativeBalance);
-      } else {
-        IERC20(WETH).safeTransferFrom(payer, recipient, value);
+        return;
       }
-    } else {
-      IERC20(token).safeTransferFrom(payer, recipient, value);
+      IERC20(WETH).safeTransferFrom(payer, recipient, value);
+      return;
     }
+    IERC20(token).safeTransferFrom(payer, recipient, value);
   }
 
   function _transferETH(address to, uint256 value) internal {
