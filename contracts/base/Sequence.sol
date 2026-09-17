@@ -21,23 +21,23 @@ abstract contract Sequence is ISequence, ReentrancyGuardTransient {
     payable
     override
     whenNotEntered
-    returns (bytes[] memory results, bool[] memory successes)
+    returns (bytes[] memory results, StepStatus[] memory statuses)
   {
     results = new bytes[](calls.length);
-    successes = new bool[](calls.length);
+    statuses = new StepStatus[](calls.length);
 
     for (uint256 i = 0; i < calls.length; i++) {
       SequenceCall calldata step = calls[i];
       (bool success, bytes memory result) = _executeSequenceStep(step.data);
       results[i] = result;
-      successes[i] = success;
+      statuses[i] = success ? StepStatus.SUCCESS : StepStatus.FAILURE;
 
       if (success) {
         if (step.onSuccess == OnStepSuccess.STOP) break;
       } else {
         if (step.onFailure == OnStepFailure.STOP) break;
         if (step.onFailure == OnStepFailure.REVERT) {
-          revert StepFailed(i, result);
+          revert SequenceFailed(results, statuses);
         }
       }
     }

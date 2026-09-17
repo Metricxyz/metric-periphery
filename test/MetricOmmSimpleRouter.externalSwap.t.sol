@@ -324,8 +324,8 @@ contract SimpleRouterExternalSwapTest is Test {
       ISequence.OnStepSuccess.CONTINUE,
       ISequence.OnStepFailure.REVERT
     );
-    (bytes[] memory results, bool[] memory successes) = router.sequence(calls);
-    assertTrue(successes[0]);
+    (bytes[] memory results, ISequence.StepStatus[] memory statuses) = router.sequence(calls);
+    assertEq(uint8(statuses[0]), 1);
     assertEq(results[0], abi.encode(uint256(5 ether), uint256(7 ether)));
     assertEq(input.balanceOf(address(this)), 93 ether);
     assertEq(output.balanceOf(recipient), 5 ether);

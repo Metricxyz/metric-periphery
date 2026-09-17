@@ -33,8 +33,11 @@ contract SequenceSecurityTest is Test {
       ISequence.OnStepSuccess.CONTINUE,
       ISequence.OnStepFailure.REVERT
     );
+    bytes[] memory results = new bytes[](1);
+    ISequence.StepStatus[] memory statuses = new ISequence.StepStatus[](1);
+    statuses[0] = ISequence.StepStatus.FAILURE;
     vm.prank(attacker);
-    vm.expectRevert(abi.encodeWithSelector(ISequence.StepFailed.selector, 0, bytes("")));
+    vm.expectRevert(abi.encodeWithSelector(ISequence.SequenceFailed.selector, results, statuses));
     router.sequence(calls);
     assertEq(token.balanceOf(attacker), 0);
     assertEq(token.balanceOf(victim), 100 ether);
