@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
 
-import {ExternalSwapExecutor} from "../contracts/base/ExternalSwapExecutor.sol";
 import {Test} from "forge-std/Test.sol";
 import {MetricOmmSimpleRouter} from "../contracts/MetricOmmSimpleRouter.sol";
 import {Sequence} from "../contracts/base/Sequence.sol";
@@ -14,9 +13,7 @@ contract SimpleRouterSequenceTest is Test {
   address recipient = address(0x1234);
 
   function setUp() public {
-    ExternalSwapExecutor executor =
-      new ExternalSwapExecutor(vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1));
-    router = new MetricOmmSimpleRouter(address(1), address(2), address(executor));
+    router = new MetricOmmSimpleRouter(address(1), address(2));
     token = new MockERC20Permit("Token", "TOK", 18);
     token.mint(address(router), 10 ether);
   }

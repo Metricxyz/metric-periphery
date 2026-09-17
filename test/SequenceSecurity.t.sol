@@ -10,6 +10,7 @@ import {MockERC20Permit} from "./mocks/MockERC20Permit.sol";
 
 contract SequenceSecurityTest is Test {
   MetricOmmSimpleRouter router;
+  ExternalSwapExecutor swapExecutor;
   MockERC20Permit token;
   MockERC20Permit dummy;
   address victim = address(0x1234);
@@ -18,9 +19,8 @@ contract SequenceSecurityTest is Test {
   function setUp() public {
     token = new MockERC20Permit("Token", "TOK", 18);
     dummy = new MockERC20Permit("Dummy", "DUM", 18);
-    ExternalSwapExecutor executor =
-      new ExternalSwapExecutor(vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1));
-    router = new MetricOmmSimpleRouter(address(2), address(1), address(executor));
+    router = new MetricOmmSimpleRouter(address(2), address(1));
+    swapExecutor = new ExternalSwapExecutor(address(router));
     token.mint(victim, 100 ether);
     vm.prank(victim);
     token.approve(address(router), type(uint256).max);
@@ -53,7 +53,7 @@ contract SequenceSecurityTest is Test {
     );
     vm.prank(attacker);
     vm.expectRevert();
-    router.externalSwap(params);
+    router.externalSwap(address(swapExecutor), params);
     assertEq(token.balanceOf(attacker), 0);
     assertEq(token.balanceOf(victim), 100 ether);
   }

@@ -10,7 +10,6 @@ interface IExternalSwap {
   error EmptyExternalRouterCalldata();
   error SameTokenExternalSwap();
   error ExternalSwapFailed();
-  error InvalidExternalExecutor(address executor);
   error ExternalSwapExcessiveInput(uint256 amountSpent, uint256 amountInMaximum);
   error ExternalSwapBalanceMismatch(address token, address account, uint256 expectedBalance, uint256 actualBalance);
 
@@ -25,12 +24,12 @@ interface IExternalSwap {
     uint256 deadline;
   }
 
-  /// @dev External calldata must send output to the executor (the external target's msg.sender).
+  /// @dev       External calldata must send output to the executor (the external target's msg.sender).
   ///      The executor refunds the payer and pays recipient directly; this router verifies their balance changes.
   ///      Existing balances are transferred as bonuses, excluded from reported amounts and minimum output.
   /// @return amountOut Output balance increase during the swap, excluding pre-existing balances.
   /// @return amountSpent Input balance decrease during the swap, floored at zero.
-  function externalSwap(ExternalSwapParams calldata params)
+  function externalSwap(address executor, ExternalSwapParams calldata params)
     external
     payable
     returns (uint256 amountOut, uint256 amountSpent);

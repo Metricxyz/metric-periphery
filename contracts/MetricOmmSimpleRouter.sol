@@ -30,11 +30,7 @@ contract MetricOmmSimpleRouter is
   /// @param callbackMode Unrecognized mode read from transient storage.
   error InvalidCallbackMode(uint8 callbackMode);
 
-  constructor(address weth, address factory, address executor)
-    MetricOmmSwapRouterBase(factory)
-    PeripheryPayments(weth)
-    ExternalSwap(executor)
-  {}
+  constructor(address weth, address factory) MetricOmmSwapRouterBase(factory) PeripheryPayments(weth) {}
 
   // ============ Types ============
 

@@ -9,18 +9,8 @@ import {PeripheryPayments} from "./PeripheryPayments.sol";
 /// @title ExternalSwap
 /// @notice External swaps with verified payer and recipient settlement.
 abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
-  /// @dev Isolates external calls from users' token allowances granted to this router.
-  ExternalSwapExecutor public immutable isolatedExternalExecutor;
-
-  constructor(address executor) {
-    if (executor.code.length == 0 || ExternalSwapExecutor(executor).router() != address(this)) {
-      revert InvalidExternalExecutor(executor);
-    }
-    isolatedExternalExecutor = ExternalSwapExecutor(executor);
-  }
-
   /// @inheritdoc IExternalSwap
-  function externalSwap(ExternalSwapParams calldata params)
+  function externalSwap(address executor, ExternalSwapParams calldata params)
     external
     payable
     override
@@ -35,11 +25,11 @@ abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
     if (params.externalRouterCalldata.length == 0) revert EmptyExternalRouterCalldata();
     if (params.tokenIn == params.tokenOut) revert SameTokenExternalSwap();
 
-    pay(params.tokenIn, msg.sender, address(isolatedExternalExecutor), params.amountInMaximum);
+    pay(params.tokenIn, msg.sender, executor, params.amountInMaximum);
     uint256 payerBalanceBefore = IERC20(params.tokenIn).balanceOf(msg.sender);
     uint256 recipientBalanceBefore = IERC20(params.tokenOut).balanceOf(params.recipient);
 
-    (amountOut, amountSpent) = isolatedExternalExecutor.swap(params, msg.sender);
+    (amountOut, amountSpent) = ExternalSwapExecutor(executor).swap(params, msg.sender);
     if (amountSpent > params.amountInMaximum) revert ExternalSwapExcessiveInput(amountSpent, params.amountInMaximum);
     if (amountOut < params.amountOutMinimum) revert ExternalSwapInsufficientOutput(amountOut, params.amountOutMinimum);
     _checkMinimumBalanceIncrease(params.tokenIn, msg.sender, payerBalanceBefore, params.amountInMaximum - amountSpent);

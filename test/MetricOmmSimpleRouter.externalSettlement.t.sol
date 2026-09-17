@@ -8,12 +8,6 @@ import {IExternalSwap} from "../contracts/interfaces/IExternalSwap.sol";
 import {MockERC20Permit} from "./mocks/MockERC20Permit.sol";
 
 contract MisreportingExecutor {
-  address public immutable router;
-
-  constructor(address router_) {
-    router = router_;
-  }
-
   function swap(IExternalSwap.ExternalSwapParams calldata params, address payer)
     external
     returns (uint256 amountOut, uint256 amountSpent)
@@ -35,8 +29,8 @@ contract ExternalSettlementTest is Test {
   address recipient = address(0x1234);
 
   function setUp() public {
-    executor = new MisreportingExecutor(vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1));
-    router = new MetricOmmSimpleRouter(address(1), address(2), address(executor));
+    router = new MetricOmmSimpleRouter(address(1), address(2));
+    executor = new MisreportingExecutor();
     input = new MockERC20Permit("Input", "IN", 18);
     output = new MockERC20Permit("Output", "OUT", 18);
     input.mint(address(this), 100 ether);
@@ -68,7 +62,7 @@ contract ExternalSettlementTest is Test {
         IExternalSwap.ExternalSwapBalanceMismatch.selector, address(input), address(this), 93 ether, 92 ether
       )
     );
-    router.externalSwap(params);
+    router.externalSwap(address(executor), params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(output.balanceOf(recipient), 0);
   }
@@ -80,7 +74,7 @@ contract ExternalSettlementTest is Test {
         IExternalSwap.ExternalSwapBalanceMismatch.selector, address(output), recipient, 5 ether, 4 ether
       )
     );
-    router.externalSwap(params);
+    router.externalSwap(address(executor), params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(output.balanceOf(recipient), 0);
   }
@@ -88,19 +82,21 @@ contract ExternalSettlementTest is Test {
   function test_externalSwap_revertsOnReportedSpendAboveBudget() public {
     IExternalSwap.ExternalSwapParams memory params = _params(5 ether, 11 ether, 5 ether, 0);
     vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapExcessiveInput.selector, 11 ether, 10 ether));
-    router.externalSwap(params);
+    router.externalSwap(address(executor), params);
     assertEq(input.balanceOf(address(this)), 100 ether);
   }
 
   function test_externalSwap_acceptsExtraOutput() public {
-    (uint256 amountOut, uint256 spent) = router.externalSwap(_params(5 ether, 7 ether, 6 ether, 3 ether));
+    (uint256 amountOut, uint256 spent) =
+      router.externalSwap(address(executor), _params(5 ether, 7 ether, 6 ether, 3 ether));
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
     assertEq(output.balanceOf(recipient), 6 ether);
   }
 
   function test_externalSwap_acceptsExtraRefund() public {
-    (uint256 amountOut, uint256 spent) = router.externalSwap(_params(5 ether, 7 ether, 5 ether, 4 ether));
+    (uint256 amountOut, uint256 spent) =
+      router.externalSwap(address(executor), _params(5 ether, 7 ether, 5 ether, 4 ether));
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
     assertEq(input.balanceOf(address(this)), 94 ether);
