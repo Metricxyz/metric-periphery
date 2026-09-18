@@ -9,7 +9,7 @@ import {BoundedReturnData} from "../libraries/BoundedReturnData.sol";
 import {IExternalSwap} from "../interfaces/IExternalSwap.sol";
 
 /// @dev Only the bound router may execute swaps. Users approve the router, never this contract.
-/// @dev Existing input/output balances are donated to the next swap using those tokens.
+/// @dev Input balances are refunded to the router; any output held here is forwarded to params.recipient.
 contract ExternalSwapExecutor {
   using SafeERC20 for IERC20;
 
@@ -23,26 +23,22 @@ contract ExternalSwapExecutor {
     router = router_;
   }
 
-  function swap(IExternalSwap.ExternalSwapParams calldata params, address payer)
-    external
-    returns (uint256 amountOut, uint256 amountSpent)
-  {
+  function swap(IExternalSwap.ExternalSwapParams calldata params) external returns (uint256 amountSpent) {
     if (msg.sender != router) revert UnauthorizedCaller();
     IERC20 tokenIn = IERC20(params.tokenIn);
-    IERC20 tokenOut = IERC20(params.tokenOut);
     uint256 inputBefore = tokenIn.balanceOf(address(this));
-    uint256 outputBefore = tokenOut.balanceOf(address(this));
 
     tokenIn.forceApprove(params.externalRouter, params.amountInMaximum);
     _callExternalRouter(params.externalRouter, params.externalRouterCalldata);
     tokenIn.forceApprove(params.externalRouter, 0);
 
     uint256 inputAfter = tokenIn.balanceOf(address(this));
-    uint256 outputAfter = tokenOut.balanceOf(address(this));
     amountSpent = Math.saturatingSub(inputBefore, inputAfter);
-    amountOut = outputAfter - outputBefore;
-    if (inputAfter > 0) tokenIn.safeTransfer(payer, inputAfter);
-    if (outputAfter > 0) tokenOut.safeTransfer(params.recipient, outputAfter);
+    if (inputAfter > 0) tokenIn.safeTransfer(msg.sender, inputAfter);
+
+    IERC20 tokenOut = IERC20(params.tokenOut);
+    uint256 outputBalance = tokenOut.balanceOf(address(this));
+    if (outputBalance > 0) tokenOut.safeTransfer(params.recipient, outputBalance);
   }
 
   function _callExternalRouter(address target, bytes calldata data) private {

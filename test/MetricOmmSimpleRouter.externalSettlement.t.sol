@@ -8,15 +8,11 @@ import {IExternalSwap} from "../contracts/interfaces/IExternalSwap.sol";
 import {MockERC20Permit} from "./mocks/MockERC20Permit.sol";
 
 contract MisreportingExecutor {
-  function swap(IExternalSwap.ExternalSwapParams calldata params, address payer)
-    external
-    returns (uint256 amountOut, uint256 amountSpent)
-  {
+  function swap(IExternalSwap.ExternalSwapParams calldata params) external returns (uint256 amountSpent) {
     uint256 output;
     uint256 refund;
-    (amountOut, amountSpent, output, refund) =
-      abi.decode(params.externalRouterCalldata, (uint256, uint256, uint256, uint256));
-    if (refund > 0) IERC20(params.tokenIn).transfer(payer, refund);
+    (amountSpent, output, refund) = abi.decode(params.externalRouterCalldata, (uint256, uint256, uint256));
+    if (refund > 0) IERC20(params.tokenIn).transfer(msg.sender, refund);
     if (output > 0) IERC20(params.tokenOut).transfer(params.recipient, output);
   }
 }
@@ -26,7 +22,7 @@ contract ExternalSettlementTest is Test {
   MisreportingExecutor executor;
   MockERC20Permit input;
   MockERC20Permit output;
-  address recipient = address(0x1234);
+  address recipient = address(this);
 
   function setUp() public {
     router = new MetricOmmSimpleRouter(address(1), address(2));
@@ -38,7 +34,7 @@ contract ExternalSettlementTest is Test {
     input.approve(address(router), 100 ether);
   }
 
-  function _params(uint256 reportedOutput, uint256 reportedSpent, uint256 deliveredOutput, uint256 refund)
+  function _params(uint256 reportedSpent, uint256 deliveredOutput, uint256 refund)
     private
     view
     returns (IExternalSwap.ExternalSwapParams memory)
@@ -49,17 +45,17 @@ contract ExternalSettlementTest is Test {
       10 ether,
       5 ether,
       address(output),
-      abi.encode(reportedOutput, reportedSpent, deliveredOutput, refund),
+      abi.encode(reportedSpent, deliveredOutput, refund),
       recipient,
       type(uint256).max
     );
   }
 
   function test_externalSwap_revertsOnInsufficientRefund() public {
-    IExternalSwap.ExternalSwapParams memory params = _params(5 ether, 7 ether, 5 ether, 2 ether);
+    IExternalSwap.ExternalSwapParams memory params = _params(7 ether, 5 ether, 2 ether);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IExternalSwap.ExternalSwapBalanceMismatch.selector, address(input), address(this), 93 ether, 92 ether
+        IExternalSwap.ExternalSwapBalanceMismatch.selector, address(input), address(router), 3 ether, 2 ether
       )
     );
     router.externalSwap(address(executor), params);
@@ -67,38 +63,56 @@ contract ExternalSettlementTest is Test {
     assertEq(output.balanceOf(recipient), 0);
   }
 
-  function test_externalSwap_revertsOnOverreportedOutput() public {
-    IExternalSwap.ExternalSwapParams memory params = _params(5 ether, 7 ether, 4 ether, 3 ether);
+  function test_externalSwap_existingRouterBalanceCannotCoverInsufficientRefund() public {
+    input.mint(address(router), 10 ether);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IExternalSwap.ExternalSwapBalanceMismatch.selector, address(output), recipient, 5 ether, 4 ether
+        IExternalSwap.ExternalSwapBalanceMismatch.selector, address(input), address(router), 13 ether, 12 ether
       )
     );
+    router.externalSwap(address(executor), _params(7 ether, 5 ether, 2 ether));
+    assertEq(input.balanceOf(address(router)), 10 ether);
+    assertEq(input.balanceOf(address(this)), 100 ether);
+  }
+
+  function test_externalSwap_verifiesOutputWhenRecipientIsRouter() public {
+    output.mint(address(router), 10 ether);
+    IExternalSwap.ExternalSwapParams memory params = _params(7 ether, 4 ether, 3 ether);
+    params.recipient = address(router);
+    vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapInsufficientOutput.selector, 4 ether, 5 ether));
+    router.externalSwap(address(executor), params);
+    assertEq(output.balanceOf(address(router)), 10 ether);
+    assertEq(input.balanceOf(address(this)), 100 ether);
+  }
+
+  function test_externalSwap_revertsOnInsufficientDeliveredOutput() public {
+    IExternalSwap.ExternalSwapParams memory params = _params(7 ether, 4 ether, 3 ether);
+    vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapInsufficientOutput.selector, 4 ether, 5 ether));
     router.externalSwap(address(executor), params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(output.balanceOf(recipient), 0);
   }
 
   function test_externalSwap_revertsOnReportedSpendAboveBudget() public {
-    IExternalSwap.ExternalSwapParams memory params = _params(5 ether, 11 ether, 5 ether, 0);
+    IExternalSwap.ExternalSwapParams memory params = _params(11 ether, 5 ether, 0);
     vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapExcessiveInput.selector, 11 ether, 10 ether));
     router.externalSwap(address(executor), params);
     assertEq(input.balanceOf(address(this)), 100 ether);
   }
 
-  function test_externalSwap_acceptsExtraOutput() public {
-    (uint256 amountOut, uint256 spent) =
-      router.externalSwap(address(executor), _params(5 ether, 7 ether, 6 ether, 3 ether));
-    assertEq(amountOut, 5 ether);
+  function test_externalSwap_reportsDeliveredOutputExcludingExistingBalance() public {
+    output.mint(recipient, 3 ether);
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(executor), _params(7 ether, 6 ether, 3 ether));
+    assertEq(amountOut, 6 ether);
     assertEq(spent, 7 ether);
-    assertEq(output.balanceOf(recipient), 6 ether);
+    assertEq(output.balanceOf(recipient), 9 ether);
   }
 
   function test_externalSwap_acceptsExtraRefund() public {
-    (uint256 amountOut, uint256 spent) =
-      router.externalSwap(address(executor), _params(5 ether, 7 ether, 5 ether, 4 ether));
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(executor), _params(7 ether, 5 ether, 4 ether));
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
-    assertEq(input.balanceOf(address(this)), 94 ether);
+    assertEq(input.balanceOf(address(this)), 90 ether);
+    assertEq(input.balanceOf(address(router)), 4 ether);
   }
 }

@@ -7,7 +7,7 @@ import {ExternalSwapExecutor} from "./ExternalSwapExecutor.sol";
 import {PeripheryPayments} from "./PeripheryPayments.sol";
 
 /// @title ExternalSwap
-/// @notice External swaps with verified payer and recipient settlement.
+/// @notice External swaps with verified router refunds and recipient output.
 abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
   /// @inheritdoc IExternalSwap
   function externalSwap(address executor, ExternalSwapParams calldata params)
@@ -24,16 +24,22 @@ abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
     }
     if (params.externalRouterCalldata.length == 0) revert EmptyExternalRouterCalldata();
     if (params.tokenIn == params.tokenOut) revert SameTokenExternalSwap();
+    if (params.recipient == executor) {
+      revert InvalidExternalSwapRecipient(params.recipient);
+    }
 
     pay(params.tokenIn, msg.sender, executor, params.amountInMaximum);
-    uint256 payerBalanceBefore = IERC20(params.tokenIn).balanceOf(msg.sender);
+    uint256 refundBalanceBefore = IERC20(params.tokenIn).balanceOf(address(this));
     uint256 recipientBalanceBefore = IERC20(params.tokenOut).balanceOf(params.recipient);
 
-    (amountOut, amountSpent) = ExternalSwapExecutor(executor).swap(params, msg.sender);
+    amountSpent = ExternalSwapExecutor(executor).swap(params);
+    amountOut = IERC20(params.tokenOut).balanceOf(params.recipient) - recipientBalanceBefore;
+
     if (amountSpent > params.amountInMaximum) revert ExternalSwapExcessiveInput(amountSpent, params.amountInMaximum);
     if (amountOut < params.amountOutMinimum) revert ExternalSwapInsufficientOutput(amountOut, params.amountOutMinimum);
-    _checkMinimumBalanceIncrease(params.tokenIn, msg.sender, payerBalanceBefore, params.amountInMaximum - amountSpent);
-    _checkMinimumBalanceIncrease(params.tokenOut, params.recipient, recipientBalanceBefore, amountOut);
+    _checkMinimumBalanceIncrease(
+      params.tokenIn, address(this), refundBalanceBefore, params.amountInMaximum - amountSpent
+    );
   }
 
   function _checkMinimumBalanceIncrease(address token, address account, uint256 balanceBefore, uint256 increase)
