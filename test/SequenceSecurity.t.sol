@@ -56,7 +56,7 @@ contract SequenceSecurityTest is Test {
     );
     vm.prank(attacker);
     vm.expectRevert();
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(token.balanceOf(attacker), 0);
     assertEq(token.balanceOf(victim), 100 ether);
   }

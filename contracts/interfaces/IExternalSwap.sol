@@ -8,10 +8,10 @@ interface IExternalSwap {
   error ExternalSwapInsufficientOutput(uint256 amountOut, uint256 amountOutMinimum);
   error InvalidExternalRouter(address target);
   error InvalidExternalSwapRecipient(address recipient);
+  error InvalidNativeRefundToken(address token);
   error EmptyExternalRouterCalldata();
   error SameTokenExternalSwap();
   error ExternalSwapFailed();
-  error ExternalSwapExcessiveInput(uint256 amountSpent, uint256 amountInMaximum);
   error ExternalSwapBalanceMismatch(address token, address account, uint256 expectedBalance, uint256 actualBalance);
 
   struct ExternalSwapParams {
@@ -25,18 +25,22 @@ interface IExternalSwap {
     uint256 deadline;
   }
 
-  /// @dev       Recipient must not be the executor. External calldata may send tokenOut to recipient or to the executor.
-  ///      Any output held by the executor is forwarded to recipient before this router measures the output balance increase.
-  ///      The executor refunds unspent tokenIn to this router; router refunds and recipient output are verified by balance changes.
-  ///      Collect refunds with sweepToken, or unwrapWETH9 for WETH, in the same multicall.
-  ///      To receive native output, set recipient to this router and append unwrapWETH9 in the same multicall.
-  ///      refundETH returns only ETH that was never wrapped, not WETH refunds.
-  ///      Existing executor input balances are refunded as bonuses, excluded from reported input spent.
-  ///      Existing recipient output balances do not count toward output; forwarded executor balances do count.
+  /// @notice Perform an arbitrary external swap that requires approval and no callback settlement.
+  /// @dev Recipient must not be the executor. External calldata must send tokenOut to recipient or the executor.
+  ///      The executor forwards any output it holds to recipient.
+  ///      Caller-funded swaps refund only the unused input from this execution, without sweeping existing balances.
+  ///      Router-funded swaps retain unused input for subsequent steps; append a sweep or unwrap to collect leftovers.
+  /// @param executor An isolated contract that performs the external swap.
+  /// @param payerIsRouter Fund the maximum from this router's token balance without wrapping ETH or pulling caller tokens.
+  ///      Use atomically after funding the router; unused input stays with the router.
+  /// @param returnUnspendAsNative Require WETH input and unwrap caller refunds to ETH.
+  ///      When payerIsRouter is true, input must still be WETH but the refund stays wrapped in the router.
   /// @return amountOut Recipient output balance increase, including any output forwarded from the executor.
-  /// @return amountSpent Input balance decrease during the swap, floored at zero.
-  function externalSwap(address executor, ExternalSwapParams calldata params)
-    external
-    payable
-    returns (uint256 amountOut, uint256 amountSpent);
+  /// @return amountSpent Net funded input not returned to the router, floored at zero.
+  function externalSwap(
+    address executor,
+    bool payerIsRouter,
+    bool returnUnspendAsNative,
+    ExternalSwapParams calldata params
+  ) external payable returns (uint256 amountOut, uint256 amountSpent);
 }

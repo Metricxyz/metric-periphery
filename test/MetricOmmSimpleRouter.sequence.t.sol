@@ -136,7 +136,7 @@ contract SimpleRouterSequenceTest is Test {
     bytes[] memory primaryCalls = new bytes[](1);
     primaryCalls[0] = abi.encodeCall(router.exactInputSingle, (primary));
     bytes[] memory fallbackCalls = new bytes[](1);
-    fallbackCalls[0] = abi.encodeCall(router.externalSwap, (address(6), fallbackParams));
+    fallbackCalls[0] = abi.encodeCall(router.externalSwap, (address(6), false, false, fallbackParams));
     ISequence.SequenceCall[] memory calls = new ISequence.SequenceCall[](2);
     calls[0] = ISequence.SequenceCall(
       abi.encodeCall(router.multicall, (primaryCalls)), ISequence.OnStepSuccess.STOP, ISequence.OnStepFailure.CONTINUE

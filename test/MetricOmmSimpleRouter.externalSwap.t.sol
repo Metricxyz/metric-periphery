@@ -54,7 +54,18 @@ contract SimpleRouterExternalSwapTest is Test {
   ExternalRouterMock target;
   address recipient = address(this);
 
-  receive() external payable {}
+  bool private rejectRefund;
+  bool private attemptRefundReentry;
+  bool private refundReentryBlocked;
+
+  receive() external payable {
+    require(!rejectRefund, "Rejected refund");
+    if (attemptRefundReentry) {
+      (bool success, bytes memory reason) = address(router).call(abi.encodeCall(router.refundETH, ()));
+      refundReentryBlocked =
+        !success && keccak256(reason) == keccak256(abi.encodeWithSignature("ReentrancyGuardReentrantCall()"));
+    }
+  }
 
   function setUp() public {
     weth = new MockWETH9();
@@ -81,14 +92,118 @@ contract SimpleRouterExternalSwapTest is Test {
     );
   }
 
+  function test_externalSwap_routerPaysAndRetainsRefund() public {
+    input.mint(address(router), 12 ether);
+    assertTrue(input.approve(address(router), 0));
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), true, false, _params());
+    assertEq(amountOut, 5 ether);
+    assertEq(spent, 7 ether);
+    assertEq(input.balanceOf(address(router)), 5 ether);
+    assertEq(input.balanceOf(address(this)), 100 ether);
+    assertEq(output.balanceOf(recipient), 5 ether);
+  }
+
+  function test_externalSwap_insufficientRouterBalanceDoesNotPullFromCaller() public {
+    input.mint(address(router), 9 ether);
+    vm.expectRevert(
+      abi.encodeWithSignature("ERC20InsufficientBalance(address,uint256,uint256)", address(router), 9 ether, 10 ether)
+    );
+    router.externalSwap(address(swapExecutor), true, false, _params());
+    assertEq(input.balanceOf(address(router)), 9 ether);
+    assertEq(input.balanceOf(address(this)), 100 ether);
+    assertEq(output.balanceOf(recipient), 0);
+  }
+
+  function testFuzz_externalSwap_routerWethFundingDoesNotWrapEth(bool refundAsNative) public {
+    vm.deal(address(this), 14 ether);
+    weth.deposit{value: 12 ether}();
+    assertTrue(weth.transfer(address(router), 12 ether));
+    (uint256 amountOut, uint256 spent) =
+      router.externalSwap{value: 2 ether}(address(swapExecutor), true, refundAsNative, _nativeInputParams());
+    assertEq(amountOut, 5 ether);
+    assertEq(spent, 7 ether);
+    assertEq(weth.balanceOf(address(router)), 5 ether);
+    assertEq(address(router).balance, 2 ether);
+    assertEq(weth.balanceOf(address(this)), 0);
+    assertEq(address(this).balance, 0);
+  }
+
+  function test_multicall_unwrapsRouterFundedRefundAndReturnsUnusedEth() public {
+    vm.deal(address(this), 12 ether);
+    weth.deposit{value: 10 ether}();
+    assertTrue(weth.transfer(address(router), 10 ether));
+    bytes[] memory calls = new bytes[](3);
+    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), true, true, _nativeInputParams()));
+    calls[1] = abi.encodeCall(router.unwrapWETH9, (3 ether, address(this)));
+    calls[2] = abi.encodeCall(router.refundETH, ());
+    bytes[] memory results = router.multicall{value: 2 ether}(calls);
+    assertEq(results[0], abi.encode(uint256(5 ether), uint256(7 ether)));
+    assertEq(address(this).balance, 5 ether);
+    assertEq(weth.balanceOf(address(this)), 0);
+    assertEq(weth.balanceOf(address(router)), 0);
+    assertEq(address(router).balance, 0);
+    assertEq(output.balanceOf(recipient), 5 ether);
+  }
+
+  function test_externalSwap_routerWethShortfallDoesNotUseEthOrCallerWeth() public {
+    vm.deal(address(this), 30 ether);
+    weth.deposit{value: 20 ether}();
+    assertTrue(weth.transfer(address(router), 9 ether));
+    assertTrue(weth.approve(address(router), 11 ether));
+    vm.expectRevert(
+      abi.encodeWithSignature("ERC20InsufficientBalance(address,uint256,uint256)", address(router), 9 ether, 10 ether)
+    );
+    router.externalSwap{value: 10 ether}(address(swapExecutor), true, false, _nativeInputParams());
+    assertEq(weth.balanceOf(address(router)), 9 ether);
+    assertEq(weth.balanceOf(address(this)), 11 ether);
+    assertEq(address(this).balance, 10 ether);
+    assertEq(address(router).balance, 0);
+  }
+
+  function testFuzz_multicall_externalSwapUsesPreviousSwapOutput(bool insufficientOutput) public {
+    IExternalSwap.ExternalSwapParams memory first = _params();
+    first.recipient = address(router);
+    first.externalRouterCalldata =
+      abi.encodeCall(target.swap, (address(input), address(output), address(router), 7 ether, 5 ether));
+    IExternalSwap.ExternalSwapParams memory second = _params();
+    second.tokenIn = address(output);
+    second.tokenOut = address(input);
+    second.amountInMaximum = insufficientOutput ? 6 ether : 5 ether;
+    second.amountOutMinimum = 2 ether;
+    second.externalRouterCalldata =
+      abi.encodeCall(target.swap, (address(output), address(input), recipient, 3 ether, 2 ether));
+    bytes[] memory calls = new bytes[](3);
+    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), false, false, first));
+    calls[1] = abi.encodeCall(router.externalSwap, (address(swapExecutor), true, false, second));
+    calls[2] = abi.encodeCall(router.sweepToken, (address(output), 0, recipient));
+    if (insufficientOutput) {
+      vm.expectRevert(
+        abi.encodeWithSignature("ERC20InsufficientBalance(address,uint256,uint256)", address(router), 5 ether, 6 ether)
+      );
+    }
+    bytes[] memory results = router.multicall(calls);
+    if (insufficientOutput) {
+      assertEq(input.balanceOf(address(this)), 100 ether);
+      assertEq(output.balanceOf(recipient), 0);
+      assertEq(input.balanceOf(address(target)), 0);
+    } else {
+      assertEq(results[0], abi.encode(uint256(5 ether), uint256(7 ether)));
+      assertEq(results[1], abi.encode(uint256(2 ether), uint256(3 ether)));
+      assertEq(input.balanceOf(address(this)), 95 ether);
+      assertEq(output.balanceOf(recipient), 2 ether);
+    }
+    assertEq(input.balanceOf(address(router)), 0);
+    assertEq(output.balanceOf(address(router)), 0);
+  }
+
   function test_externalSwap_refundsPartialFillAndReusesExecutor() public {
     input.mint(address(router), 2 ether);
     output.mint(address(router), 3 ether);
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), _params());
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, _params());
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
-    assertEq(input.balanceOf(address(this)), 90 ether);
-    assertEq(input.balanceOf(address(router)), 5 ether);
+    assertEq(input.balanceOf(address(this)), 93 ether);
+    assertEq(input.balanceOf(address(router)), 2 ether);
     assertEq(output.balanceOf(address(router)), 3 ether);
     assertEq(output.balanceOf(recipient), 5 ether);
     address first = target.executor();
@@ -96,7 +211,7 @@ contract SimpleRouterExternalSwapTest is Test {
     assertEq(input.balanceOf(first), 0);
     assertEq(input.allowance(first, address(target)), 0);
     assertEq(input.allowance(address(router), address(target)), 0);
-    router.externalSwap(address(swapExecutor), _params());
+    router.externalSwap(address(swapExecutor), false, false, _params());
     assertEq(target.executor(), first);
     assertEq(first, address(swapExecutor));
     assertEq(input.balanceOf(first), 0);
@@ -105,7 +220,7 @@ contract SimpleRouterExternalSwapTest is Test {
 
   function test_externalSwap_onlyRefundPassesThroughRouter() public {
     vm.recordLogs();
-    router.externalSwap(address(swapExecutor), _params());
+    router.externalSwap(address(swapExecutor), false, false, _params());
     Vm.Log[] memory logs = vm.getRecordedLogs();
     bytes32 transferEvent = keccak256("Transfer(address,address,uint256)");
     bytes32 routerAddress = bytes32(uint256(uint160(address(router))));
@@ -114,7 +229,11 @@ contract SimpleRouterExternalSwapTest is Test {
     uint256 directOutputs;
     for (uint256 i; i < logs.length; i++) {
       if (logs[i].topics[0] != transferEvent) continue;
-      assertTrue(logs[i].topics[1] != routerAddress);
+      if (logs[i].topics[1] == routerAddress) {
+        assertEq(logs[i].emitter, address(input));
+        assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
+        assertEq(abi.decode(logs[i].data, (uint256)), 3 ether);
+      }
       if (logs[i].topics[2] == routerAddress) {
         assertEq(logs[i].emitter, address(input));
         assertEq(logs[i].topics[1], bytes32(uint256(uint160(address(swapExecutor)))));
@@ -129,7 +248,7 @@ contract SimpleRouterExternalSwapTest is Test {
       }
       transfers++;
     }
-    assertEq(transfers, 4);
+    assertEq(transfers, 5);
     assertEq(refunds, 1);
     assertEq(directOutputs, 1);
   }
@@ -139,40 +258,40 @@ contract SimpleRouterExternalSwapTest is Test {
     input.mint(executor, 2 ether);
     output.mint(executor, 3 ether);
     IExternalSwap.ExternalSwapParams memory params = _params();
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), params);
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(amountOut, 8 ether);
-    assertEq(spent, 7 ether);
+    assertEq(spent, 5 ether);
     assertEq(input.balanceOf(executor), 0);
     assertEq(output.balanceOf(executor), 0);
-    assertEq(input.balanceOf(address(this)), 90 ether);
-    assertEq(input.balanceOf(address(router)), 5 ether);
+    assertEq(input.balanceOf(address(this)), 95 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(output.balanceOf(recipient), 8 ether);
 
-    (amountOut, spent) = router.externalSwap(address(swapExecutor), _params());
+    (amountOut, spent) = router.externalSwap(address(swapExecutor), false, false, _params());
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
-    assertEq(input.balanceOf(address(this)), 80 ether);
-    assertEq(input.balanceOf(address(router)), 8 ether);
+    assertEq(input.balanceOf(address(this)), 88 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(output.balanceOf(recipient), 13 ether);
   }
 
   function test_externalSwap_donationAboveSpendRefundsMoreThanFunding() public {
     address executor = address(swapExecutor);
     input.mint(executor, 8 ether);
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), _params());
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, _params());
     assertEq(amountOut, 5 ether);
-    assertEq(spent, 7 ether);
-    assertEq(input.balanceOf(address(this)), 90 ether);
-    assertEq(input.balanceOf(address(router)), 11 ether);
+    assertEq(spent, 0);
+    assertEq(input.balanceOf(address(this)), 101 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(input.balanceOf(executor), 0);
   }
 
-  function test_externalSwap_donationEqualToSpendDoesNotChangeReportedInput() public {
+  function test_externalSwap_donationEqualToSpendMakesNetInputZero() public {
     input.mint(address(swapExecutor), 7 ether);
-    (, uint256 spent) = router.externalSwap(address(swapExecutor), _params());
-    assertEq(spent, 7 ether);
-    assertEq(input.balanceOf(address(this)), 90 ether);
-    assertEq(input.balanceOf(address(router)), 10 ether);
+    (, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, _params());
+    assertEq(spent, 0);
+    assertEq(input.balanceOf(address(this)), 100 ether);
+    assertEq(input.balanceOf(address(router)), 0);
   }
 
   function test_externalSwap_forwardedExecutorBalanceCountsTowardMinimum() public {
@@ -180,7 +299,7 @@ contract SimpleRouterExternalSwapTest is Test {
     output.mint(executor, 3 ether);
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.amountOutMinimum = 8 ether;
-    (uint256 amountOut,) = router.externalSwap(address(swapExecutor), params);
+    (uint256 amountOut,) = router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(amountOut, 8 ether);
     assertEq(output.balanceOf(executor), 0);
     assertEq(output.balanceOf(recipient), 8 ether);
@@ -191,9 +310,9 @@ contract SimpleRouterExternalSwapTest is Test {
     params.recipient = address(router);
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(input), address(output), address(router), 7 ether, 5 ether));
-    router.externalSwap(address(swapExecutor), params);
-    assertEq(input.balanceOf(address(this)), 90 ether);
-    assertEq(input.balanceOf(address(router)), 3 ether);
+    router.externalSwap(address(swapExecutor), false, false, params);
+    assertEq(input.balanceOf(address(this)), 93 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(output.balanceOf(address(router)), 5 ether);
     assertEq(output.balanceOf(address(swapExecutor)), 0);
   }
@@ -202,7 +321,7 @@ contract SimpleRouterExternalSwapTest is Test {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.recipient = address(swapExecutor);
     vm.expectRevert(abi.encodeWithSelector(IExternalSwap.InvalidExternalSwapRecipient.selector, params.recipient));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(input.balanceOf(address(swapExecutor)), 0);
     assertEq(target.executor(), address(0));
@@ -214,13 +333,13 @@ contract SimpleRouterExternalSwapTest is Test {
     params.recipient = thirdParty;
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(input), address(output), thirdParty, 7 ether, 5 ether));
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), params);
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
     assertEq(output.balanceOf(thirdParty), 5 ether);
     assertEq(output.balanceOf(address(this)), 0);
     assertEq(output.balanceOf(address(swapExecutor)), 0);
-    assertEq(input.balanceOf(address(router)), 3 ether);
+    assertEq(input.balanceOf(address(router)), 0);
   }
 
   function test_externalSwap_forwardsOutputWhenExternalRouterPaysCaller() public {
@@ -228,12 +347,12 @@ contract SimpleRouterExternalSwapTest is Test {
     params.recipient = address(0x1234);
     params.externalRouterCalldata =
       abi.encodeCall(target.swapToCaller, (address(input), address(output), 7 ether, 5 ether));
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), params);
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
     assertEq(output.balanceOf(address(swapExecutor)), 0);
     assertEq(output.balanceOf(params.recipient), 5 ether);
-    assertEq(input.balanceOf(address(router)), 3 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(input.allowance(address(swapExecutor), address(target)), 0);
   }
 
@@ -242,7 +361,7 @@ contract SimpleRouterExternalSwapTest is Test {
     params.externalRouterCalldata =
       abi.encodeCall(target.swapToCaller, (address(input), address(output), 7 ether, 4 ether));
     vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapInsufficientOutput.selector, 4 ether, 5 ether));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(output.balanceOf(address(swapExecutor)), 0);
     assertEq(output.balanceOf(recipient), 0);
@@ -253,7 +372,7 @@ contract SimpleRouterExternalSwapTest is Test {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.amountOutMinimum = 6 ether;
     vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapInsufficientOutput.selector, 5 ether, 6 ether));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(output.balanceOf(recipient), 10 ether);
     assertEq(input.balanceOf(address(this)), 100 ether);
   }
@@ -262,7 +381,7 @@ contract SimpleRouterExternalSwapTest is Test {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(input), address(output), recipient, 10 ether, 5 ether));
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), params);
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(amountOut, 5 ether);
     assertEq(spent, 10 ether);
     assertEq(input.balanceOf(address(this)), 90 ether);
@@ -276,11 +395,12 @@ contract SimpleRouterExternalSwapTest is Test {
     params.tokenIn = address(weth);
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(weth), address(output), recipient, 7 ether, 5 ether));
-    (uint256 amountOut, uint256 spent) = router.externalSwap{value: 4 ether}(address(swapExecutor), params);
+    (uint256 amountOut, uint256 spent) =
+      router.externalSwap{value: 4 ether}(address(swapExecutor), false, false, params);
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
-    assertEq(weth.balanceOf(address(this)), 0);
-    assertEq(weth.balanceOf(address(router)), 3 ether);
+    assertEq(weth.balanceOf(address(this)), 3 ether);
+    assertEq(weth.balanceOf(address(router)), 0);
     assertEq(address(router).balance, 0);
   }
 
@@ -296,10 +416,10 @@ contract SimpleRouterExternalSwapTest is Test {
   function test_externalSwap_revertsOnExecutorWithoutCode() public {
     IExternalSwap.ExternalSwapParams memory params = _params();
     vm.expectRevert();
-    router.externalSwap(address(0), params);
+    router.externalSwap(address(0), false, false, params);
     address eoa = address(0x12345);
     vm.expectRevert();
-    router.externalSwap(eoa, params);
+    router.externalSwap(eoa, false, false, params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(input.balanceOf(eoa), 0);
     assertEq(input.balanceOf(address(target)), 0);
@@ -311,7 +431,7 @@ contract SimpleRouterExternalSwapTest is Test {
     ExternalSwapExecutor wrongExecutor = new ExternalSwapExecutor(address(otherRouter));
     IExternalSwap.ExternalSwapParams memory params = _params();
     vm.expectRevert(ExternalSwapExecutor.UnauthorizedCaller.selector);
-    router.externalSwap(address(wrongExecutor), params);
+    router.externalSwap(address(wrongExecutor), false, false, params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(input.balanceOf(address(wrongExecutor)), 0);
     assertEq(input.balanceOf(address(target)), 0);
@@ -319,19 +439,19 @@ contract SimpleRouterExternalSwapTest is Test {
   }
 
   function test_externalSwap_usesExecutorSelectedForEachSwap() public {
-    router.externalSwap(address(swapExecutor), _params());
+    router.externalSwap(address(swapExecutor), false, false, _params());
     ExternalSwapExecutor secondExecutor = new ExternalSwapExecutor(address(router));
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(input), address(output), recipient, 7 ether, 5 ether));
 
-    (uint256 amountOut, uint256 spent) = router.externalSwap(address(secondExecutor), params);
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(secondExecutor), false, false, params);
 
     assertEq(target.executor(), address(secondExecutor));
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
-    assertEq(input.balanceOf(address(this)), 80 ether);
-    assertEq(input.balanceOf(address(router)), 6 ether);
+    assertEq(input.balanceOf(address(this)), 86 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(output.balanceOf(recipient), 10 ether);
     assertEq(input.balanceOf(address(secondExecutor)), 0);
     assertEq(input.allowance(address(secondExecutor), address(target)), 0);
@@ -346,7 +466,7 @@ contract SimpleRouterExternalSwapTest is Test {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.amountOutMinimum = 6 ether;
     vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapInsufficientOutput.selector, 5 ether, 6 ether));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(input.balanceOf(address(this)), 100 ether);
     assertEq(input.balanceOf(address(target)), 0);
     assertEq(output.balanceOf(recipient), 0);
@@ -357,30 +477,29 @@ contract SimpleRouterExternalSwapTest is Test {
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(input), address(output), recipient, 11 ether, 5 ether));
     vm.expectRevert();
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(input.balanceOf(address(this)), 100 ether);
   }
 
-  function test_externalSwap_nativeFundingRefundsUnspentWethToRouter() public {
+  function test_externalSwap_nativeFundingRefundsUnspentWethToCaller() public {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.tokenIn = address(weth);
     params.externalRouterCalldata =
       abi.encodeCall(target.swap, (address(weth), address(output), recipient, 7 ether, 5 ether));
     vm.deal(address(this), 10 ether);
-    (uint256 amountOut, uint256 spent) = router.externalSwap{value: 10 ether}(address(swapExecutor), params);
+    (uint256 amountOut, uint256 spent) =
+      router.externalSwap{value: 10 ether}(address(swapExecutor), false, false, params);
     assertEq(amountOut, 5 ether);
     assertEq(spent, 7 ether);
-    assertEq(weth.balanceOf(address(this)), 0);
-    assertEq(weth.balanceOf(address(router)), 3 ether);
+    assertEq(weth.balanceOf(address(this)), 3 ether);
+    assertEq(weth.balanceOf(address(router)), 0);
     assertEq(address(router).balance, 0);
   }
 
-  function test_multicall_sweepsTokenRefund() public {
-    bytes[] memory calls = new bytes[](2);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), _params()));
-    calls[1] = abi.encodeCall(router.sweepToken, (address(input), 0, address(this)));
-    bytes[] memory results = router.multicall(calls);
-    assertEq(results[0], abi.encode(uint256(5 ether), uint256(7 ether)));
+  function test_externalSwap_automaticallyRefundsToken() public {
+    (uint256 amountOut, uint256 spent) = router.externalSwap(address(swapExecutor), false, false, _params());
+    assertEq(amountOut, 5 ether);
+    assertEq(spent, 7 ether);
     assertEq(input.balanceOf(address(this)), 93 ether);
     assertEq(input.balanceOf(address(router)), 0);
     assertEq(output.balanceOf(recipient), 5 ether);
@@ -395,10 +514,9 @@ contract SimpleRouterExternalSwapTest is Test {
 
   function test_multicall_unwrapsInputRefundAndRefundsUnusedEth() public {
     vm.deal(address(this), 12 ether);
-    bytes[] memory calls = new bytes[](3);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), _nativeInputParams()));
-    calls[1] = abi.encodeCall(router.unwrapWETH9, (0, address(this)));
-    calls[2] = abi.encodeCall(router.refundETH, ());
+    bytes[] memory calls = new bytes[](2);
+    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), false, true, _nativeInputParams()));
+    calls[1] = abi.encodeCall(router.refundETH, ());
     router.multicall{value: 12 ether}(calls);
     assertEq(address(this).balance, 5 ether);
     assertEq(weth.balanceOf(address(this)), 0);
@@ -407,15 +525,95 @@ contract SimpleRouterExternalSwapTest is Test {
     assertEq(output.balanceOf(recipient), 5 ether);
   }
 
-  function test_multicall_keepsNativeInputRefundWrapped() public {
+  function test_externalSwap_keepsNativeInputRefundWrapped() public {
     vm.deal(address(this), 10 ether);
-    bytes[] memory calls = new bytes[](2);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), _nativeInputParams()));
-    calls[1] = abi.encodeCall(router.sweepToken, (address(weth), 0, address(this)));
-    router.multicall{value: 10 ether}(calls);
+    router.externalSwap{value: 10 ether}(address(swapExecutor), false, false, _nativeInputParams());
     assertEq(address(this).balance, 0);
     assertEq(weth.balanceOf(address(this)), 3 ether);
     assertEq(weth.balanceOf(address(router)), 0);
+    assertEq(output.balanceOf(recipient), 5 ether);
+  }
+
+  function test_externalSwap_rejectsNativeRefundForNonWeth() public {
+    vm.expectRevert(abi.encodeWithSelector(IExternalSwap.InvalidNativeRefundToken.selector, address(input)));
+    router.externalSwap(address(swapExecutor), false, true, _params());
+    assertEq(input.balanceOf(address(this)), 100 ether);
+    assertEq(output.balanceOf(recipient), 0);
+  }
+
+  function test_externalSwap_nativeRefundPreservesExistingRouterBalances() public {
+    vm.deal(address(this), 12 ether);
+    weth.deposit{value: 2 ether}();
+    assertTrue(weth.transfer(address(router), 2 ether));
+    (uint256 amountOut, uint256 spent) =
+      router.externalSwap{value: 10 ether}(address(swapExecutor), false, true, _nativeInputParams());
+    assertEq(amountOut, 5 ether);
+    assertEq(spent, 7 ether);
+    assertEq(address(this).balance, 3 ether);
+    assertEq(weth.balanceOf(address(this)), 0);
+    assertEq(weth.balanceOf(address(router)), 2 ether);
+    assertEq(address(router).balance, 0);
+  }
+
+  function test_externalSwap_mixedFundingCanRefundNative() public {
+    vm.deal(address(this), 10 ether);
+    weth.deposit{value: 6 ether}();
+    assertTrue(weth.approve(address(router), 6 ether));
+    router.externalSwap{value: 4 ether}(address(swapExecutor), false, true, _nativeInputParams());
+    assertEq(address(this).balance, 3 ether);
+    assertEq(weth.balanceOf(address(this)), 0);
+    assertEq(weth.balanceOf(address(router)), 0);
+  }
+
+  function test_externalSwap_tokenFundedWethRefundIncludesExecutorDonation() public {
+    vm.deal(address(this), 12 ether);
+    weth.deposit{value: 12 ether}();
+    assertTrue(weth.transfer(address(swapExecutor), 2 ether));
+    assertTrue(weth.approve(address(router), 10 ether));
+    (, uint256 spent) = router.externalSwap(address(swapExecutor), false, true, _nativeInputParams());
+    assertEq(spent, 5 ether);
+    assertEq(address(this).balance, 5 ether);
+    assertEq(weth.balanceOf(address(this)), 0);
+    assertEq(weth.balanceOf(address(router)), 0);
+  }
+
+  function test_externalSwap_rejectedNativeRefundRollsBackSwap() public {
+    vm.deal(address(this), 10 ether);
+    rejectRefund = true;
+    vm.expectRevert(PeripheryPayments.ETHTransferFailed.selector);
+    router.externalSwap{value: 10 ether}(address(swapExecutor), false, true, _nativeInputParams());
+    assertEq(address(this).balance, 10 ether);
+    assertEq(output.balanceOf(recipient), 0);
+    assertEq(weth.balanceOf(address(target)), 0);
+    assertEq(weth.balanceOf(address(router)), 0);
+  }
+
+  function test_externalSwap_zeroNativeRefundSkipsTransfer() public {
+    vm.deal(address(this), 10 ether);
+    rejectRefund = true;
+    IExternalSwap.ExternalSwapParams memory params = _nativeInputParams();
+    params.externalRouterCalldata =
+      abi.encodeCall(target.swap, (address(weth), address(output), recipient, 10 ether, 5 ether));
+    (, uint256 spent) = router.externalSwap{value: 10 ether}(address(swapExecutor), false, true, params);
+    assertEq(spent, 10 ether);
+    assertEq(output.balanceOf(recipient), 5 ether);
+  }
+
+  function test_externalSwap_checksOutputBeforeNativeRefund() public {
+    vm.deal(address(this), 10 ether);
+    rejectRefund = true;
+    IExternalSwap.ExternalSwapParams memory params = _nativeInputParams();
+    params.amountOutMinimum = 6 ether;
+    vm.expectRevert(abi.encodeWithSelector(IExternalSwap.ExternalSwapInsufficientOutput.selector, 5 ether, 6 ether));
+    router.externalSwap{value: 10 ether}(address(swapExecutor), false, true, params);
+  }
+
+  function test_externalSwap_blocksReentryDuringNativeRefund() public {
+    vm.deal(address(this), 10 ether);
+    attemptRefundReentry = true;
+    router.externalSwap{value: 10 ether}(address(swapExecutor), false, true, _nativeInputParams());
+    assertTrue(refundReentryBlocked);
+    assertEq(address(this).balance, 3 ether);
     assertEq(output.balanceOf(recipient), 5 ether);
   }
 
@@ -430,24 +628,20 @@ contract SimpleRouterExternalSwapTest is Test {
       abi.encodeCall(target.swap, (address(input), address(weth), outputRecipient, 7 ether, 5 ether));
   }
 
-  function test_multicall_deliversWrappedOutputDirectlyAndSweepsRefund() public {
+  function test_externalSwap_deliversWrappedOutputAndRefundsInput() public {
     IExternalSwap.ExternalSwapParams memory params = _fundWethOutput(recipient);
-    bytes[] memory calls = new bytes[](2);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), params));
-    calls[1] = abi.encodeCall(router.sweepToken, (address(input), 0, address(this)));
-    router.multicall(calls);
+    router.externalSwap(address(swapExecutor), false, false, params);
     assertEq(weth.balanceOf(recipient), 5 ether);
     assertEq(recipient.balance, 0);
     assertEq(input.balanceOf(address(this)), 93 ether);
     assertEq(input.balanceOf(address(router)), 0);
   }
 
-  function test_multicall_unwrapsOutputAndSweepsRefund() public {
+  function test_multicall_unwrapsOutputWithAutomaticInputRefund() public {
     IExternalSwap.ExternalSwapParams memory params = _fundWethOutput(address(router));
-    bytes[] memory calls = new bytes[](3);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), params));
+    bytes[] memory calls = new bytes[](2);
+    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), false, false, params));
     calls[1] = abi.encodeCall(router.unwrapWETH9, (params.amountOutMinimum, recipient));
-    calls[2] = abi.encodeCall(router.sweepToken, (address(input), 0, address(this)));
     router.multicall(calls);
     assertEq(recipient.balance, 5 ether);
     assertEq(weth.balanceOf(recipient), 0);
@@ -460,10 +654,9 @@ contract SimpleRouterExternalSwapTest is Test {
     IExternalSwap.ExternalSwapParams memory params = _fundWethOutput(address(router));
     params.externalRouterCalldata =
       abi.encodeCall(target.swapToCaller, (address(input), address(weth), 7 ether, 5 ether));
-    bytes[] memory calls = new bytes[](3);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), params));
+    bytes[] memory calls = new bytes[](2);
+    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), false, false, params));
     calls[1] = abi.encodeCall(router.unwrapWETH9, (params.amountOutMinimum, recipient));
-    calls[2] = abi.encodeCall(router.sweepToken, (address(input), 0, address(this)));
     bytes[] memory results = router.multicall(calls);
     assertEq(results[0], abi.encode(uint256(5 ether), uint256(7 ether)));
     assertEq(recipient.balance, 5 ether);
@@ -475,10 +668,9 @@ contract SimpleRouterExternalSwapTest is Test {
 
   function test_multicall_failedUnwrapRollsBackSwap() public {
     IExternalSwap.ExternalSwapParams memory params = _fundWethOutput(address(router));
-    bytes[] memory calls = new bytes[](3);
-    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), params));
+    bytes[] memory calls = new bytes[](2);
+    calls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), false, false, params));
     calls[1] = abi.encodeCall(router.unwrapWETH9, (params.amountOutMinimum, address(input)));
-    calls[2] = abi.encodeCall(router.sweepToken, (address(input), 0, address(this)));
     vm.expectRevert(PeripheryPayments.ETHTransferFailed.selector);
     router.multicall(calls);
     assertEq(input.balanceOf(address(this)), 100 ether);
@@ -489,9 +681,8 @@ contract SimpleRouterExternalSwapTest is Test {
   }
 
   function test_sequence_fallbackMulticallSettlesRefund() public {
-    bytes[] memory fallbackCalls = new bytes[](2);
-    fallbackCalls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), _params()));
-    fallbackCalls[1] = abi.encodeCall(router.sweepToken, (address(input), 0, address(this)));
+    bytes[] memory fallbackCalls = new bytes[](1);
+    fallbackCalls[0] = abi.encodeCall(router.externalSwap, (address(swapExecutor), false, false, _params()));
     ISequence.SequenceCall[] memory calls = new ISequence.SequenceCall[](2);
     calls[0] = ISequence.SequenceCall(
       abi.encodeCall(router.sweepToken, (address(output), 1, recipient)),
@@ -513,49 +704,49 @@ contract SimpleRouterExternalSwapTest is Test {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata = abi.encodeCall(target.reenter, (router));
     vm.expectRevert(bytes4(keccak256("ReentrancyGuardReentrantCall()")));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
   }
 
   function test_externalSwap_revertsOnSequenceReentry() public {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata = abi.encodeCall(target.reenterSequence, (router));
     vm.expectRevert(bytes4(keccak256("ReentrancyGuardReentrantCall()")));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
   }
 
   function test_externalSwap_revertsOnMulticallReentry() public {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata = abi.encodeCall(target.reenterMulticall, (router));
     vm.expectRevert(bytes4(keccak256("ReentrancyGuardReentrantCall()")));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
   }
 
   function test_externalSwap_emptyRevertUsesFallbackError() public {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata = abi.encodeCall(target.fail, (0));
     vm.expectRevert(IExternalSwap.ExternalSwapFailed.selector);
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
   }
 
   function test_externalSwap_boundsRevertData() public {
     IExternalSwap.ExternalSwapParams memory params = _params();
     params.externalRouterCalldata = abi.encodeCall(target.fail, (8192));
     vm.expectRevert(new bytes(4096));
-    router.externalSwap(address(swapExecutor), params);
+    router.externalSwap(address(swapExecutor), false, false, params);
   }
 
   function test_sequence_executesExternalSwap() public {
     ISequence.SequenceCall[] memory calls = new ISequence.SequenceCall[](1);
     calls[0] = ISequence.SequenceCall(
-      abi.encodeCall(router.externalSwap, (address(swapExecutor), _params())),
+      abi.encodeCall(router.externalSwap, (address(swapExecutor), false, false, _params())),
       ISequence.OnStepSuccess.CONTINUE,
       ISequence.OnStepFailure.REVERT
     );
     (bytes[] memory results, ISequence.StepStatus[] memory statuses) = router.sequence(calls);
     assertEq(uint8(statuses[0]), 1);
     assertEq(results[0], abi.encode(uint256(5 ether), uint256(7 ether)));
-    assertEq(input.balanceOf(address(this)), 90 ether);
-    assertEq(input.balanceOf(address(router)), 3 ether);
+    assertEq(input.balanceOf(address(this)), 93 ether);
+    assertEq(input.balanceOf(address(router)), 0);
     assertEq(output.balanceOf(recipient), 5 ether);
   }
 }

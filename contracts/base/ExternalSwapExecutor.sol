@@ -2,7 +2,6 @@
 pragma solidity ^0.8.35;
 
 import {LowLevelCall} from "@openzeppelin/contracts/utils/LowLevelCall.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BoundedReturnData} from "../libraries/BoundedReturnData.sol";
@@ -23,17 +22,15 @@ contract ExternalSwapExecutor {
     router = router_;
   }
 
-  function swap(IExternalSwap.ExternalSwapParams calldata params) external returns (uint256 amountSpent) {
+  function swap(IExternalSwap.ExternalSwapParams calldata params) external {
     if (msg.sender != router) revert UnauthorizedCaller();
     IERC20 tokenIn = IERC20(params.tokenIn);
-    uint256 inputBefore = tokenIn.balanceOf(address(this));
 
     tokenIn.forceApprove(params.externalRouter, params.amountInMaximum);
     _callExternalRouter(params.externalRouter, params.externalRouterCalldata);
     tokenIn.forceApprove(params.externalRouter, 0);
 
     uint256 inputAfter = tokenIn.balanceOf(address(this));
-    amountSpent = Math.saturatingSub(inputBefore, inputAfter);
     if (inputAfter > 0) tokenIn.safeTransfer(msg.sender, inputAfter);
 
     IERC20 tokenOut = IERC20(params.tokenOut);
