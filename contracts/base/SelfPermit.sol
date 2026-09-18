@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC20PermitAllowed} from "../interfaces/external/IERC20PermitAllowed.sol";
 import {ISelfPermit} from "../interfaces/ISelfPermit.sol";
 
@@ -10,9 +11,13 @@ import {ISelfPermit} from "../interfaces/ISelfPermit.sol";
 /// @notice Functionality to call permit on any EIP-2612-compliant token for use in the route.
 /// @dev This follows the Uniswap v3-periphery pattern using OpenZeppelin's IERC20Permit.
 ///      Intended to be composed with Multicall.
-abstract contract SelfPermit is ISelfPermit {
+abstract contract SelfPermit is ISelfPermit, ReentrancyGuardTransient {
   /// @inheritdoc ISelfPermit
-  function selfPermit(address token, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) public payable {
+  function selfPermit(address token, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+    public
+    payable
+    nonReentrant
+  {
     IERC20Permit(token).permit(msg.sender, address(this), value, deadline, v, r, s);
   }
 
@@ -30,6 +35,7 @@ abstract contract SelfPermit is ISelfPermit {
   function selfPermitAllowed(address token, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s)
     public
     payable
+    nonReentrant
   {
     IERC20PermitAllowed(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
   }

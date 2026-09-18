@@ -3,12 +3,13 @@ pragma solidity ^0.8.35;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IWETH9} from "../interfaces/IWETH9.sol";
 import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
 /// @title PeripheryPayments
 /// @notice Shared payment, unwrap, sweep, and refund helpers for MetricOmm routers.
-abstract contract PeripheryPayments is IPeripheryPayments {
+abstract contract PeripheryPayments is IPeripheryPayments, ReentrancyGuardTransient {
   using SafeERC20 for IERC20;
 
   /// @notice Constructor received zero WETH address.
@@ -34,7 +35,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function unwrapWETH9(uint256 amountMinimum, address recipient) public payable override {
+  function unwrapWETH9(uint256 amountMinimum, address recipient) public payable override nonReentrant {
     uint256 balanceWETH = IERC20(WETH).balanceOf(address(this));
     if (balanceWETH < amountMinimum) revert InsufficientWETH(amountMinimum, balanceWETH);
 
@@ -45,7 +46,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function sweepToken(address token, uint256 amountMinimum, address recipient) public payable override {
+  function sweepToken(address token, uint256 amountMinimum, address recipient) public payable override nonReentrant {
     uint256 balanceToken = IERC20(token).balanceOf(address(this));
     if (balanceToken < amountMinimum) revert InsufficientToken(token, amountMinimum, balanceToken);
 
@@ -55,13 +56,14 @@ abstract contract PeripheryPayments is IPeripheryPayments {
   }
 
   /// @inheritdoc IPeripheryPayments
-  function refundETH() external payable override {
+  function refundETH() external payable override nonReentrant {
     uint256 balance = address(this).balance;
     if (balance > 0) {
       _transferETH(msg.sender, balance);
     }
   }
 
+  /// @notice Pays token to recipient from payer !HOWEVER! if token is WETH, tries to wrap and pay from this.balance first before transferring from payer.
   /// @param token The token to pay.
   /// @param payer The entity that must pay.
   /// @param recipient The entity that will receive payment.
@@ -70,21 +72,25 @@ abstract contract PeripheryPayments is IPeripheryPayments {
     // If the payer is contract it means we are in the middle of a path. In the middle of a path we operate on ERC20 only.
     if (payer == address(this)) {
       IERC20(token).safeTransfer(recipient, value);
-    } else if (token == WETH) {
+      return;
+    }
+    if (token == WETH) {
       uint256 nativeBalance = address(this).balance;
       if (nativeBalance >= value) {
         IWETH9(WETH).deposit{value: value}();
         IERC20(WETH).safeTransfer(recipient, value);
-      } else if (nativeBalance > 0) {
+        return;
+      }
+      if (nativeBalance > 0) {
         IWETH9(WETH).deposit{value: nativeBalance}();
         IERC20(WETH).safeTransfer(recipient, nativeBalance);
         IERC20(WETH).safeTransferFrom(payer, recipient, value - nativeBalance);
-      } else {
-        IERC20(WETH).safeTransferFrom(payer, recipient, value);
+        return;
       }
-    } else {
-      IERC20(token).safeTransferFrom(payer, recipient, value);
+      IERC20(WETH).safeTransferFrom(payer, recipient, value);
+      return;
     }
+    IERC20(token).safeTransferFrom(payer, recipient, value);
   }
 
   function _transferETH(address to, uint256 value) internal {
