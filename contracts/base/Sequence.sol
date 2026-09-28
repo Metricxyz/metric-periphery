@@ -35,10 +35,10 @@ abstract contract Sequence is ISequence, ReentrancyGuardTransient {
       if (success) {
         if (step.onSuccess == OnStepSuccess.STOP) break;
       } else {
+        if (step.onFailure == OnStepFailure.REVERT) revert SequenceFailed(results, statuses);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        emit SequenceStepFailed(msg.sender, i, bytes4(result));
         if (step.onFailure == OnStepFailure.STOP) break;
-        if (step.onFailure == OnStepFailure.REVERT) {
-          revert SequenceFailed(results, statuses);
-        }
       }
     }
   }

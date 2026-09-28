@@ -51,6 +51,12 @@ contract SimpleRouterSequenceTest is Test {
     assertEq(token.balanceOf(recipient), 10 ether);
   }
 
+  function test_sequence_emitsStepFailedWhenFallbackRuns() public {
+    vm.expectEmit(address(router));
+    emit ISequence.SequenceStepFailed(address(this), 0, bytes4(keccak256("InsufficientToken(address,uint256,uint256)")));
+    router.sequence(_calls(true));
+  }
+
   function test_sequence_stopsAfterFailure() public {
     ISequence.SequenceCall[] memory calls = _calls(true);
     calls[0].onFailure = ISequence.OnStepFailure.STOP;
@@ -146,7 +152,7 @@ contract SimpleRouterSequenceTest is Test {
     );
     bytes[] memory results = new bytes[](2);
     results[0] = abi.encodeWithSelector(IMetricOmmSimpleRouter.TransactionExpired.selector, 99, 100);
-    results[1] = abi.encodeWithSelector(IExternalSwap.DeadlineExpired.selector, 99, 100);
+    results[1] = abi.encodeWithSelector(IMetricOmmSimpleRouter.TransactionExpired.selector, 99, 100);
     ISequence.StepStatus[] memory statuses = new ISequence.StepStatus[](2);
     statuses[0] = ISequence.StepStatus.FAILURE;
     statuses[1] = ISequence.StepStatus.FAILURE;

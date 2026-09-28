@@ -7,11 +7,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IExternalSwap} from "../interfaces/IExternalSwap.sol";
 import {IWETH9} from "../interfaces/IWETH9.sol";
 import {ExternalSwapExecutor} from "./ExternalSwapExecutor.sol";
+import {MetricOmmSwapRouterBase} from "./MetricOmmSwapRouterBase.sol";
 import {PeripheryPayments} from "./PeripheryPayments.sol";
 
 /// @title ExternalSwap
 /// @notice External swaps with verified router refunds and recipient output.
-abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
+abstract contract ExternalSwap is IExternalSwap, MetricOmmSwapRouterBase, PeripheryPayments {
   /// @inheritdoc IExternalSwap
   function externalSwap(address executor, bool payerIsRouter, bool refundAsNative, ExternalSwapParams calldata params)
     external
@@ -20,8 +21,7 @@ abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
     nonReentrant
     returns (uint256 amountOut, uint256 amountSpent)
   {
-    // forge-lint: disable-next-line(block-timestamp)
-    if (block.timestamp > params.deadline) revert DeadlineExpired(params.deadline, block.timestamp);
+    _checkDeadline(params.deadline);
     if (params.externalRouter == address(this) || params.externalRouter.code.length == 0) {
       revert InvalidExternalRouter(params.externalRouter);
     }
@@ -39,13 +39,13 @@ abstract contract ExternalSwap is IExternalSwap, PeripheryPayments {
     uint256 recipientBalanceBefore = IERC20(params.tokenOut).balanceOf(params.recipient);
 
     ExternalSwapExecutor(executor).swap(params);
-    uint256 unspend = _balanceIncrease(params.tokenIn, address(this), refundBalanceBefore);
-    amountSpent = Math.saturatingSub(params.amountInMaximum, unspend);
+    uint256 unspent = _balanceIncrease(params.tokenIn, address(this), refundBalanceBefore);
+    amountSpent = Math.saturatingSub(params.amountInMaximum, unspent);
     amountOut = _balanceIncrease(params.tokenOut, params.recipient, recipientBalanceBefore);
 
     if (amountOut < params.amountOutMinimum) revert ExternalSwapInsufficientOutput(amountOut, params.amountOutMinimum);
     if (payerIsRouter) return (amountOut, amountSpent);
-    _refundInput(params.tokenIn, unspend, refundAsNative);
+    _refundInput(params.tokenIn, unspent, refundAsNative);
   }
 
   function _refundInput(address token, uint256 amount, bool refundAsNative) private {
